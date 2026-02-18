@@ -6,7 +6,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow">
           <h2 className="text-lg font-semibold text-gray-600">
-            Total Tasks
+            Total Tasks2
           </h2>
           <p className="text-3xl font-bold mt-2">0</p>
         </div>
