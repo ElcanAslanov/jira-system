@@ -1,30 +1,33 @@
-export default function DashboardPage() {
-  return (
-    <div className="p-6 min-h-screen bg-gray-100">
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+"use client";
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow">
-          <h2 className="text-lg font-semibold text-gray-600">
-            Total Tasks2
-          </h2>
-          <p className="text-3xl font-bold mt-2">0</p>
-        </div>
+import { useUser } from "@/hooks/useUser";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-        <div className="bg-white p-6 rounded-xl shadow">
-          <h2 className="text-lg font-semibold text-gray-600">
-            My Tasks
-          </h2>
-          <p className="text-3xl font-bold mt-2">0</p>
-        </div>
+export default function DashboardRedirect() {
+  const { user, loading } = useUser();
+  const router = useRouter();
 
-        <div className="bg-white p-6 rounded-xl shadow">
-          <h2 className="text-lg font-semibold text-gray-600">
-            Completed
-          </h2>
-          <p className="text-3xl font-bold mt-2">0</p>
-        </div>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    if (!loading && user) {
+      switch (user.role) {
+        case "ADMIN":
+          router.replace("/dashboard/admin-dashboard");
+          break;
+        case "BOSS":
+          router.replace("/dashboard/boss-dashboard");
+          break;
+        case "REHBER":
+          router.replace("/dashboard/rehber-dashboard");
+          break;
+        case "EMPLOYEE":
+          router.replace("/dashboard/employee-dashboard");
+          break;
+        default:
+          router.replace("/login");
+      }
+    }
+  }, [user, loading, router]);
+
+  return null;
 }
