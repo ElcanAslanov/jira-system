@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = req.headers.get("authorization");
+    const { id } = await context.params;
+
+    const authHeader = request.headers.get("authorization");
 
     if (!authHeader) {
       return NextResponse.json(
@@ -41,7 +43,7 @@ export async function PUT(
     const { error } = await supabase
       .from("notifications")
       .update({ is_read: true })
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_id", user.id);
 
     if (error) throw error;
@@ -51,7 +53,7 @@ export async function PUT(
   } catch (e: any) {
     console.error("READ ERROR:", e);
     return NextResponse.json(
-      { error: e.message },
+      { error: e?.message || "Server error" },
       { status: 500 }
     );
   }
