@@ -8,14 +8,55 @@ export function useUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user || null);
+    async function loadUser() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const authUser = session.user;
+
+      // 🔥 EMPLOYEE TABLE-DƏN ROLE GÖTÜRÜRÜK
+      const { data: employee } = await supabase
+        .from("employees")
+        .select("role")
+        .eq("user_id", authUser.id)
+        .single();
+
+      setUser({
+        ...authUser,
+        role: employee?.role || null,
+      });
+
       setLoading(false);
-    });
+    }
+
+    loadUser();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null);
+      async (_event, session) => {
+        if (!session?.user) {
+          setUser(null);
+          return;
+        }
+
+        const authUser = session.user;
+
+        const { data: employee } = await supabase
+          .from("employees")
+          .select("role")
+          .eq("user_id", authUser.id)
+          .single();
+
+        setUser({
+          ...authUser,
+          role: employee?.role || null,
+        });
       }
     );
 

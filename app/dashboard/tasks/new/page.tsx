@@ -78,30 +78,47 @@ export default function CreateTaskPage() {
     const selectedFiles = Array.from(e.target.files || []);
 
     const allowedTypes = [
+      // PDF
       "application/pdf",
+
+      // Excel
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel",
+
+      // Word
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+
+      // 🔥 IMAGES
+      "image/jpeg",
+      "image/png",
     ];
 
-    const maxSize = 20 * 1024 * 1024;
+    const maxSize = 20 * 1024 * 1024; // 20MB
+    const maxFiles = 20;
 
-    const validFiles = selectedFiles.filter((file) => {
+    let currentFiles = [...files];
+
+    for (const file of selectedFiles) {
       if (!allowedTypes.includes(file.type)) {
-        alert("Yalnız PDF, Excel və Word icazəlidir");
-        return false;
+        alert("Yalnız PDF, Excel, Word, JPG və PNG icazəlidir");
+        continue;
       }
 
       if (file.size > maxSize) {
         alert(`${file.name} 20MB-dan böyükdür`);
-        return false;
+        continue;
       }
 
-      return true;
-    });
+      if (currentFiles.length >= maxFiles) {
+        alert("Maksimum 20 fayl əlavə edə bilərsiniz");
+        break;
+      }
 
-    setFiles((prev) => [...prev, ...validFiles]);
+      currentFiles.push(file);
+    }
+
+    setFiles(currentFiles);
   };
 
   const removeFile = (index: number) => {
@@ -203,11 +220,10 @@ export default function CreateTaskPage() {
                 key={p}
                 type="button"
                 onClick={() => setPriority(p)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                  priority === p
+                className={`px-4 py-2 rounded-full text-sm font-medium transition ${priority === p
                     ? priorityStyles[p]
                     : "bg-gray-100 text-gray-600"
-                }`}
+                  }`}
               >
                 {p}
               </button>
@@ -216,27 +232,27 @@ export default function CreateTaskPage() {
         </div>
 
         {/* DATE RANGE */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <DatePicker
-    value={dateFrom ? dayjs(dateFrom, "YYYY-MM-DD") : null}
-    format={DATE_FORMATS}
-    placeholder="Başlama tarixi"
-    style={{ width: "100%", height: 48, borderRadius: 12 }}
-    onChange={(value) => {
-      setDateFrom(value ? value.format("YYYY-MM-DD") : "");
-    }}
-  />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <DatePicker
+            value={dateFrom ? dayjs(dateFrom, "YYYY-MM-DD") : null}
+            format={DATE_FORMATS}
+            placeholder="Başlama tarixi"
+            style={{ width: "100%", height: 48, borderRadius: 12 }}
+            onChange={(value) => {
+              setDateFrom(value ? value.format("YYYY-MM-DD") : "");
+            }}
+          />
 
-  <DatePicker
-    value={dateTo ? dayjs(dateTo, "YYYY-MM-DD") : null}
-    format={DATE_FORMATS}
-    placeholder="Bitmə tarixi"
-    style={{ width: "100%", height: 48, borderRadius: 12 }}
-    onChange={(value) => {
-      setDateTo(value ? value.format("YYYY-MM-DD") : "");
-    }}
-  />
-</div>
+          <DatePicker
+            value={dateTo ? dayjs(dateTo, "YYYY-MM-DD") : null}
+            format={DATE_FORMATS}
+            placeholder="Bitmə tarixi"
+            style={{ width: "100%", height: 48, borderRadius: 12 }}
+            onChange={(value) => {
+              setDateTo(value ? value.format("YYYY-MM-DD") : "");
+            }}
+          />
+        </div>
 
         {/* MULTI ASSIGN */}
         <div ref={dropdownRef} className="relative">
@@ -272,11 +288,10 @@ export default function CreateTaskPage() {
                 <div
                   key={emp.id}
                   onClick={() => toggleAssign(emp.id)}
-                  className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex justify-between ${
-                    assignedTo.includes(emp.id)
+                  className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex justify-between ${assignedTo.includes(emp.id)
                       ? "bg-blue-50"
                       : ""
-                  }`}
+                    }`}
                 >
                   <span>
                     {emp.ad} {emp.soyad}
@@ -293,12 +308,13 @@ export default function CreateTaskPage() {
         {/* FILE ATTACH */}
         <div>
           <label className="text-sm font-medium text-gray-600">
-            Fayl əlavə et (PDF, Excel, Word — max 20MB)
+            Fayl əlavə et (PDF, Excel, Word , Şəkil — max 20MB)
           </label>
 
           <input
             type="file"
             multiple
+            accept=".pdf,.xls,.xlsx,.doc,.docx,.jpg,.jpeg,.png"
             onChange={handleFileChange}
             className="mt-2 block w-full border p-3 rounded-xl"
           />

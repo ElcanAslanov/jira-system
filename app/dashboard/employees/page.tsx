@@ -53,13 +53,13 @@ const COLUMN_LABELS: Record<string, string> = {
 const MAIN_COLUMNS: Array<
   { key: "full_name" | "email" | "company_name" | "role_name" | "guides" | "created_at"; sortable?: boolean }
 > = [
-  { key: "full_name", sortable: true },
-  { key: "email", sortable: true },
-  { key: "company_name", sortable: true },
-  { key: "role_name", sortable: true },
-  { key: "guides" },
-  { key: "created_at", sortable: true },
-];
+    { key: "full_name", sortable: true },
+    { key: "email", sortable: true },
+    { key: "company_name", sortable: true },
+    { key: "role_name", sortable: true },
+    { key: "guides" },
+    { key: "created_at", sortable: true },
+  ];
 
 function formatDMY(date?: string | null, withTime = false) {
   if (!date) return "-";
@@ -125,10 +125,10 @@ export default function EmployeesAdminPage() {
     guide_ids: [] as string[],
   });
 
-function showToast(type: ToastType, text: string) {
-  setToast({ type, text });
-  setTimeout(() => setToast(null), 2500);
-}
+  function showToast(type: ToastType, text: string) {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 2500);
+  }
   // ---------------- LOAD ----------------
   const load = async () => {
     setLoading(true);
@@ -385,7 +385,7 @@ function showToast(type: ToastType, text: string) {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border p-6 md:p-8">
-       <div className="flex flex-col md:flex-row items-center justify-between gap-4 flex-wrap">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-black text-slate-900">👥 İşçilər</h1>
             <p className="text-sm text-slate-500 mt-1">
@@ -572,27 +572,27 @@ function showToast(type: ToastType, text: string) {
                     <td className="p-3 text-slate-800">{e.email}</td>
                     <td className="p-3 text-slate-800">{e.companies?.name || "-"}</td>
                     <td className="p-3 text-slate-800">{e.roles?.name || "-"}</td>
-          <td className="p-3">
-  {e.employee_guides?.length ? (
-    <div className="flex flex-wrap gap-2">
-      {e.employee_guides.map((g, i) => {
-        const guide = g.guides;
-        if (!guide) return null;
+                    <td className="p-3">
+                      {e.employee_guides?.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {e.employee_guides.map((g, i) => {
+                            const guide = g.guides;
+                            if (!guide) return null;
 
-        return (
-          <span
-            key={i}
-            className="px-2 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200"
-          >
-            {guide.ad} {guide.soyad}
-          </span>
-        );
-      })}
-    </div>
-  ) : (
-    "-"
-  )}
-</td>
+                            return (
+                              <span
+                                key={i}
+                                className="px-2 py-1 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200"
+                              >
+                                {guide.ad} {guide.soyad}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                     <td className="p-3 text-slate-800">{formatDMY(e.created_at, true)}</td>
 
                     <td className="p-3">
@@ -624,67 +624,67 @@ function showToast(type: ToastType, text: string) {
                 )}
               </tbody>
             </table>
-            
+
           </div>
-          
+
         )}
       </div>
-<div className="md:hidden space-y-4 mt-4">
-  {paginatedEmployees.map((e) => (
-    <div key={e.id} className="border rounded-2xl p-4 shadow-sm bg-white">
-      <div className="font-bold text-lg">
-        {e.ad} {e.soyad}
+      <div className="md:hidden space-y-4 mt-4">
+        {paginatedEmployees.map((e) => (
+          <div key={e.id} className="border rounded-2xl p-4 shadow-sm bg-white">
+            <div className="font-bold text-lg">
+              {e.ad} {e.soyad}
+            </div>
+
+            <div className="text-sm text-slate-500">
+              {e.email}
+            </div>
+
+            <div className="mt-3 text-sm space-y-1">
+              <div>Şirkət: {e.companies?.name || "-"}</div>
+              <div>Rol: {e.roles?.name || "-"}</div>
+              <div>
+                Rəhbər(lər):{" "}
+                {e.employee_guides?.length
+                  ? e.employee_guides
+                    .map((g) => {
+                      const guide = Array.isArray(g.guides)
+                        ? g.guides[0]
+                        : g.guides;
+
+                      if (!guide) return null;
+                      return `${guide.ad ?? ""} ${guide.soyad ?? ""}`.trim();
+                    })
+                    .filter(Boolean)
+                    .join(", ")
+                  : "-"}
+              </div>
+              <div>Tarix: {formatDMY(e.created_at)}</div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => openEdit(e)}
+                className="flex-1 py-2 rounded-xl border font-bold"
+              >
+                Edit
+              </button>
+
+              <button
+                onClick={() => remove(e.id)}
+                className="flex-1 py-2 rounded-xl bg-red-600 text-white font-bold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
-
-      <div className="text-sm text-slate-500">
-        {e.email}
-      </div>
-
-      <div className="mt-3 text-sm space-y-1">
-        <div>Şirkət: {e.companies?.name || "-"}</div>
-        <div>Rol: {e.roles?.name || "-"}</div>
-        <div>
-  Rəhbər(lər):{" "}
-  {e.employee_guides?.length
-    ? e.employee_guides
-        .map((g) => {
-          const guide = Array.isArray(g.guides)
-            ? g.guides[0]
-            : g.guides;
-
-          if (!guide) return null;
-          return `${guide.ad ?? ""} ${guide.soyad ?? ""}`.trim();
-        })
-        .filter(Boolean)
-        .join(", ")
-    : "-"}
-</div>
-        <div>Tarix: {formatDMY(e.created_at)}</div>
-      </div>
-
-      <div className="flex gap-2 mt-4">
-        <button
-          onClick={() => openEdit(e)}
-          className="flex-1 py-2 rounded-xl border font-bold"
-        >
-          Edit
-        </button>
-
-        <button
-          onClick={() => remove(e.id)}
-          className="flex-1 py-2 rounded-xl bg-red-600 text-white font-bold"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  ))}
-</div>
       {/* EDIT MODAL */}
       {edit && (
         <ModalOverlay onClose={closeEdit}>
           <div
-             className="bg-white w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border p-5 md:p-6"
+            className="bg-white w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border p-5 md:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">

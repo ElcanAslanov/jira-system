@@ -13,6 +13,7 @@ async function getRequestUser(req: Request) {
   const headerUserId = req.headers.get("x-user-id");
   const headerRole = req.headers.get("x-user-role");
 
+  // Header bypass (dev üçün)
   if (!authHeader && headerUserId) {
     return {
       id: headerUserId,
@@ -32,19 +33,16 @@ async function getRequestUser(req: Request) {
   const { data: employee, error: employeeError } =
     await supabaseAdmin
       .from("employees")
-      .select(`id, role_id, roles(name)`)
+      .select(`id, roles(name)`)
       .eq("user_id", authData.user.id)
       .single();
 
-  if (employeeError || !employee) throw new Error("Employee not found");
+  if (employeeError || !employee)
+    throw new Error("Employee not found");
 
-  let role: string | null = null;
-
-  if (Array.isArray(employee.roles)) {
-    role = employee.roles[0]?.name ?? null;
-  } else if (employee.roles && typeof employee.roles === "object") {
-    role = (employee.roles as any).name ?? null;
-  }
+  const role = Array.isArray(employee.roles)
+    ? employee.roles[0]?.name ?? null
+    : (employee.roles as any)?.name ?? null;
 
   return {
     id: employee.id,
@@ -58,9 +56,9 @@ export async function GET(req: Request) {
   try {
     const user = await getRequestUser(req);
 
-    let tasks;
+    let tasks: any[] = [];
 
-    // ADMIN / BOSS → hamısını görür
+    // ================= ADMIN / BOSS =================
     if (["ADMIN", "BOSS"].includes(user.role ?? "")) {
       const { data, error } = await supabaseAdmin
         .from("tasks")
@@ -68,9 +66,11 @@ export async function GET(req: Request) {
         .order("sort_index");
 
       if (error) throw error;
-      tasks = data;
-    } else {
-      /* 1️⃣ User-a assign olunan task id-lər */
+      tasks = data ?? [];
+    }
+
+    // ================= REHBER / EMPLOYEE =================
+    else {
       const { data: assignedRows, error: assignErr } =
         await supabaseAdmin
           .from("task_assignees")
@@ -82,22 +82,21 @@ export async function GET(req: Request) {
       const assignedTaskIds =
         assignedRows?.map((r) => r.task_id) ?? [];
 
-      /* 2️⃣ Task filter */
-      const { data, error } = await supabaseAdmin
-        .from("tasks")
-        .select("*")
-        .or(
-          assignedTaskIds.length > 0
-            ? `created_by.eq.${user.id},id.in.(${assignedTaskIds.join(",")})`
-            : `created_by.eq.${user.id}`
-        )
-        .order("sort_index");
+      if (assignedTaskIds.length > 0) {
+        const { data, error } = await supabaseAdmin
+          .from("tasks")
+          .select("*")
+          .in("id", assignedTaskIds)
+          .order("sort_index");
 
-      if (error) throw error;
-      tasks = data;
+        if (error) throw error;
+        tasks = data ?? [];
+      } else {
+        tasks = [];
+      }
     }
 
-    if (!tasks || tasks.length === 0) {
+    if (!tasks.length) {
       return NextResponse.json({ tasks: [] });
     }
 
@@ -132,10 +131,10 @@ export async function GET(req: Request) {
 
     const finalTasks = tasks.map((task) => {
       const relatedAssignees =
-        assignees?.filter((a) => a.task_id === task.id);
+        assignees?.filter((a) => a.task_id === task.id) ?? [];
 
       const names = relatedAssignees
-        ?.map((r) => {
+        .map((r) => {
           const emp = Array.isArray(r.employees)
             ? r.employees[0]
             : r.employees;
@@ -146,28 +145,27 @@ export async function GET(req: Request) {
         .filter(Boolean);
 
       const relatedFiles =
-        files?.filter((f) => f.task_id === task.id);
+        files?.filter((f) => f.task_id === task.id) ?? [];
 
       return {
         ...task,
         assigned_to:
-          names && names.length > 0
-            ? names.join(", ")
-            : null,
-        files:
-          relatedFiles?.map((f) => ({
-            name: f.original_name,
-            path: f.path,
-            size: f.size_bytes,
-          })) ?? [],
+          names.length > 0 ? names.join(", ") : null,
+        files: relatedFiles.map((f) => ({
+          name: f.original_name,
+          path: f.path,
+          size: f.size_bytes,
+        })),
       };
     });
 
     return NextResponse.json({ tasks: finalTasks });
 
   } catch (e: any) {
+    console.error("TASKS GET ERROR:", e);
+
     return NextResponse.json(
-      { error: e.message },
+      { error: e?.message ?? "Server error" },
       { status: 401 }
     );
   }
@@ -189,7 +187,7 @@ export async function POST(req: Request) {
     let assigned_to: string[] = [];
     let files: File[] = [];
 
-    /* MULTIPART */
+    // ================= MULTIPART =================
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
 
@@ -202,7 +200,7 @@ export async function POST(req: Request) {
       files = formData.getAll("files") as File[];
     }
 
-    /* JSON */
+    // ================= JSON =================
     else {
       const body = await req.json();
 
@@ -212,7 +210,6 @@ export async function POST(req: Request) {
       start_date = body.start_date;
       due_date = body.due_date;
       assigned_to = body.assigned_to || [];
-      files = [];
     }
 
     if (!title) throw new Error("Title required");
@@ -235,7 +232,8 @@ export async function POST(req: Request) {
 
     if (taskError) throw taskError;
 
-    /* ASSIGNEES */
+    /* ===== ASSIGNEES ===== */
+
     if (assigned_to.length) {
       await supabaseAdmin.from("task_assignees").insert(
         assigned_to.map((id) => ({
@@ -245,37 +243,62 @@ export async function POST(req: Request) {
       );
     }
 
-    /* FILE UPLOAD + DB INSERT (DÜZGÜN SÜTUNLAR) */
-    for (const file of files) {
-      const filePath = `${task.id}/${Date.now()}-${file.name}`;
+    const MAX_SIZE = 20 * 1024 * 1024;
+const MAX_FILES = 20;
 
-      const { error: uploadError } =
-        await supabaseAdmin.storage
-          .from("task-files")
-          .upload(filePath, file);
+if (files.length > MAX_FILES) {
+  throw new Error("Maksimum 20 fayl icazəlidir");
+}
 
-      if (uploadError) throw uploadError;
+const allowedMimeTypes = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+];
 
-      const { error: fileInsertError } =
-        await supabaseAdmin.from("task_files").insert({
-          task_id: task.id,
-          uploaded_by: user.id,
-          original_name: file.name,
-          mime_type: file.type,
-          size_bytes: file.size,
-          bucket: "task-files",
-          path: filePath,
-        });
+    /* ===== FILE UPLOAD ===== */
 
-      if (fileInsertError) throw fileInsertError;
-    }
+   for (const file of files) {
+  if (!allowedMimeTypes.includes(file.type)) {
+    throw new Error(`İcazəsiz fayl tipi: ${file.name}`);
+  }
+
+  if (file.size > MAX_SIZE) {
+    throw new Error(`${file.name} 20MB-dan böyükdür`);
+  }
+
+  const filePath = `${task.id}/${Date.now()}-${file.name}`;
+
+  const { error: uploadError } =
+    await supabaseAdmin.storage
+      .from("task-files")
+      .upload(filePath, file);
+
+  if (uploadError) throw uploadError;
+
+  await supabaseAdmin.from("task_files").insert({
+    task_id: task.id,
+    uploaded_by: user.id,
+    original_name: file.name,
+    mime_type: file.type,
+    size_bytes: file.size,
+    bucket: "task-files",
+    path: filePath,
+  });
+}
 
     return NextResponse.json({ task });
 
   } catch (e: any) {
+    console.error("TASKS CREATE ERROR:", e);
+
     return NextResponse.json(
-      { error: e.message },
-      { status: 400 }
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
     );
   }
 }

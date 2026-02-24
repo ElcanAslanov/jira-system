@@ -2,20 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import {
-  Menu,
-  X,
-  LogOut,
-  Settings,
-  ChevronDown,
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useUser } from "@/hooks/useUser";
 
 type SubLink = {
   href: string;
   label: string;
+  permission?: string;
 };
 
 type Group = {
@@ -28,47 +23,205 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useUser();
-  // const [isOpen, setIsOpen] = useState(false);
+
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [employeeInfo, setEmployeeInfo] = useState<{
+    ad: string;
+    soyad: string;
+    email?: string | null;
+  } | null>(null);
+
+  /* =============================
+     FULL MENU STRUCTURE
+  ==============================*/
 
   const groups: Group[] = [
-    {
+        {
       title: "İşçilər",
       key: "employees",
       links: [
-        { href: "/dashboard/employees", label: "İşçilər" },
-        { href: "/dashboard/employees/new", label: "Yeni İşçi" },
+        {
+          href: "/dashboard/employees",
+          label: "İşçilər",
+          permission: "employees.view",
+        },
+        {
+          href: "/dashboard/employees/new",
+          label: "Yeni İşçi",
+          permission: "employees.create",
+        },
       ],
     },
     {
       title: "Struktur",
       key: "structure",
       links: [
-        { href: "/dashboard/companies", label: "Şirkətlər" },
-        { href: "/dashboard/departments", label: "Departamentlər" },
-        { href: "/dashboard/positions", label: "Vəzifələr" },
-        { href: "/dashboard/roles", label: "Rollar" },
+        {
+          href: "/dashboard/companies",
+          label: "Şirkətlər",
+          permission: "companies.view",
+        },
+        {
+          href: "/dashboard/departments",
+          label: "Departamentlər",
+          permission: "departments.view",
+        },
+        {
+          href: "/dashboard/positions",
+          label: "Vəzifələr",
+          permission: "positions.view",
+        },
+        {
+          href: "/dashboard/roles",
+          label: "Rollar",
+          permission: "roles.view",
+        },
       ],
     },
     {
       title: "Tapşırıqlar",
       key: "tasks",
       links: [
-        { href: "/dashboard/tasks", label: "Tapşırıqlar" },
-        { href: "/dashboard/tasks/new", label: "Yeni Tapşırıq" },
+        {
+          href: "/dashboard/tasks",
+          label: "Tapşırıqlar",
+          permission: "tasks.view",
+        },
+        {
+          href: "/dashboard/tasks/new",
+          label: "Yeni Tapşırıq",
+          permission: "tasks.create",
+        },
+      ],
+    },
+    {
+      title: "Dövrlü Tapşırıqlar",
+      key: "recurring",
+      links: [
+        {
+          href: "/dashboard/recurring",
+          label: "Dövrlü Tasklar",
+          permission: "recurring.view",
+        },
+        {
+          href: "/dashboard/recurring/new",
+          label: "Yeni Dövrlü Task",
+          permission: "recurring.create",
+        },
+      ],
+    },
+    {
+      title: "Yetkilər",
+      key: "permissions",
+      links: [
+        {
+          href: "/dashboard/role-permissions",
+          label: "Yetki İdarəsi",
+          permission: "role_permissions.view",
+        },
       ],
     },
   ];
 
-  // Aktiv route görə parent açıq qalsın
+  /* =============================
+     LOAD PERMISSIONS + EMPLOYEE
+  ==============================*/
+
   useEffect(() => {
-    const activeGroup = groups.find((group) =>
-      group.links.some((link) => pathname.startsWith(link.href))
+    if (!user?.id) return;
+
+    async function loadPermissions() {
+      const { data: employee } = await supabase
+        .from("employees")
+        .select("ad,soyad,email,role_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!employee?.role_id) return;
+
+      setEmployeeInfo({
+        ad: employee.ad,
+        soyad: employee.soyad,
+        email: employee.email ?? user?.email ?? null,
+      });
+
+      const roleId = employee.role_id;
+
+      const { data: rolePerms } = await supabase
+        .from("role_permissions")
+        .select("permission_key")
+        .eq("role_id", roleId);
+
+      let finalPerms =
+        rolePerms?.map((x: any) => x.permission_key) || [];
+
+      const { data: userPerms } = await supabase
+        .from("user_permissions")
+        .select("permission_key,allowed")
+        .eq("user_id", user.id);
+
+      if (userPerms) {
+        userPerms.forEach((p: any) => {
+          if (p.allowed === true) {
+            if (!finalPerms.includes(p.permission_key)) {
+              finalPerms.push(p.permission_key);
+            }
+          }
+          if (p.allowed === false) {
+            finalPerms = finalPerms.filter(
+              (k) => k !== p.permission_key
+            );
+          }
+        });
+      }
+
+      setPermissions(finalPerms);
+    }
+
+    loadPermissions();
+  }, [user?.id]);
+
+  /* =============================
+     FILTER GROUPS
+  ==============================*/
+
+  const visibleGroups = useMemo(() => {
+  return groups
+    .map((group) => {
+      // Dashboard group always visible
+      if (group.key === "dashboards") {
+        return group;
+      }
+
+      const filteredLinks = group.links.filter(
+        (link) =>
+          !link.permission ||
+          permissions.includes(link.permission)
+      );
+
+      if (filteredLinks.length === 0) return null;
+
+      return { ...group, links: filteredLinks };
+    })
+    .filter(Boolean) as Group[];
+}, [permissions]);
+
+  /* =============================
+     AUTO OPEN ACTIVE GROUP
+  ==============================*/
+
+  useEffect(() => {
+    const activeGroup = visibleGroups.find((group) =>
+      group.links.some((link) =>
+        pathname.startsWith(link.href)
+      )
     );
+
     if (activeGroup) {
       setOpenGroup(activeGroup.key);
     }
-  }, [pathname]);
+  }, [pathname, visibleGroups]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -76,133 +229,95 @@ export default function Sidebar() {
   };
 
   return (
-    <>
-      {/* Mobile Top */}
-      {/* <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#0f172a] text-white">
-        <h2 className="text-lg font-bold">Jira System</h2>
-        <button onClick={() => setIsOpen(true)}>
-          <Menu size={24} />
-        </button>
-      </div> */}
+    <aside className="w-64 h-screen bg-gradient-to-b from-[#0f172a] to-[#111827] text-white flex flex-col shadow-xl">
+      <div className="px-6 py-6 border-b border-white/10">
+        <h2 className="text-xl font-bold tracking-wide">
+          Task Flow
+        </h2>
 
-      {/* {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )} */}
+        {employeeInfo && (
+          <div className="mt-3">
+            <div className="text-sm font-semibold text-white">
+              {employeeInfo.ad} {employeeInfo.soyad}
+            </div>
+            {(employeeInfo.email || user?.email) && (
+              <div className="text-xs text-gray-400">
+                {employeeInfo.email || user?.email}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      <aside
-  className="
-    w-64 h-screen
-    bg-gradient-to-b from-[#0f172a] to-[#111827]
-    text-white
-    flex flex-col
-    shadow-xl
-  "
->
-        {/* Logo */}
-        <div className="px-6 py-6 border-b border-white/10">
-          <h2 className="text-xl font-bold tracking-wide">
-            Task Flow
-          </h2>
-          {/* <p className="text-xs text-gray-400 mt-1">
-            Task Management
-          </p> */}
-        </div>
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+        {visibleGroups.map((group) => (
+          <div key={group.key}>
+            <button
+              onClick={() =>
+                setOpenGroup(
+                  openGroup === group.key ? null : group.key
+                )
+              }
+              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-gray-300 hover:bg-white/5 transition"
+            >
+              {group.title}
+              <ChevronDown
+                size={16}
+                className={`transition-transform ${
+                  openGroup === group.key
+                    ? "rotate-180"
+                    : ""
+                }`}
+              />
+            </button>
 
-        {/* Scroll Area */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+            {openGroup === group.key && (
+              <div className="mt-2 ml-4 space-y-1">
+                {group.links.map((link) => {
+                  const isActive =
+                    pathname === link.href;
 
-          {/* Dashboard (Single Parent) */}
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={`block px-4 py-2 rounded-lg text-sm transition ${
+                        isActive
+                          ? "bg-[#e42526]/20 text-white"
+                          : "text-gray-400 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="px-6 py-4 border-t border-white/10 space-y-3">
+        {permissions.includes("settings.view") && (
           <Link
-            href="/dashboard"
-            className={`block px-4 py-2.5 rounded-xl text-sm transition ${
-              pathname === "/dashboard"
+            href="/dashboard/settings"
+            className={`block w-full text-center py-2.5 rounded-xl text-sm transition ${
+              pathname === "/dashboard/settings"
                 ? "bg-[#e42526]/20 text-white"
-                : "text-gray-400 hover:bg-white/5 hover:text-white"
+                : "bg-white/5 hover:bg-white/10 text-gray-300"
             }`}
           >
-            Dashboard
-          </Link>
-
-          {/* Groups */}
-          {groups.map((group) => (
-            <div key={group.key}>
-
-              {/* Parent */}
-              <button
-                onClick={() =>
-                  setOpenGroup(
-                    openGroup === group.key ? null : group.key
-                  )
-                }
-                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-gray-300 hover:bg-white/5 transition"
-              >
-                {group.title}
-                <ChevronDown
-                  size={16}
-                  className={`transition-transform ${
-                    openGroup === group.key ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-
-              {/* Children */}
-              {openGroup === group.key && (
-                <div className="mt-2 ml-4 space-y-1">
-                  {group.links.map((link) => {
-                    const isActive = pathname === link.href;
-
-                    return (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`block px-4 py-2 rounded-lg text-sm transition ${
-                          isActive
-                            ? "bg-[#e42526]/20 text-white"
-                            : "text-gray-400 hover:bg-white/5 hover:text-white"
-                        }`}
-                      >
-                        {link.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Bottom */}
-        <div className="px-6 py-4 border-t border-white/10 space-y-4">
-
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-full bg-[#e42526] flex items-center justify-center text-sm font-bold">
-              {user?.email?.[0]?.toUpperCase() || "U"}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-medium truncate">
-                {user?.email || "User"}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => router.push("/dashboard/settings")}
-            className="w-full bg-white/5 hover:bg-white/10 py-2.5 rounded-xl text-sm transition"
-          >
             Parametrlər
-          </button>
+          </Link>
+        )}
 
-          <button
-            onClick={logout}
-            className="w-full bg-[#e42526] hover:bg-[#c81f20] py-2.5 rounded-xl text-sm transition"
-          >
-            Çıxış
-          </button>
-        </div>
-      </aside>
-    </>
+        <button
+          onClick={logout}
+          className="w-full bg-[#e42526] hover:bg-[#c81f20] py-2.5 rounded-xl text-sm transition"
+        >
+          Çıxış
+        </button>
+      </div>
+    </aside>
   );
 }

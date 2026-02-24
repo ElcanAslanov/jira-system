@@ -27,6 +27,7 @@ import * as XLSX from "xlsx";
 import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import { Select } from "antd";
+import { message } from "antd";
 
 const { RangePicker } = DatePicker;
 
@@ -149,6 +150,11 @@ function PriorityPill({ p }: { p: string }) {
 }
 
 export default function TasksPage() {
+
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+    // COMMENTS STATE
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState("");
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
@@ -237,16 +243,59 @@ export default function TasksPage() {
     dueRange
   ]);
 
+  const [sortBy, setSortBy] = useState<
+  "title" | "status" | "priority" | "start_date" | "due_date" | "assigned_to"
+>("title");
+
+const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+function toggleSort(col: typeof sortBy) {
+  if (sortBy === col) {
+    setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+  } else {
+    setSortBy(col);
+    setSortDir("asc");
+  }
+}
   // table pagination (for ALL tasks, but filtered by search)
   const PAGE_SIZE = 6;
   const [page, setPage] = useState(1);
 
-  const filteredFlat = useMemo(() => {
-    const arr: Task[] = [];
-    for (const st of STATUSES) arr.push(...filteredTasksBy[st]);
-    // stable: status order + sort_index already sorted inside columns
-    return arr;
-  }, [filteredTasksBy]);
+ const filteredFlat = useMemo(() => {
+  const arr: Task[] = [];
+  for (const st of STATUSES) arr.push(...filteredTasksBy[st]);
+
+  const getVal = (t: Task) => {
+    if (sortBy === "title") return t.title ?? "";
+    if (sortBy === "status") return t.status ?? "";
+    if (sortBy === "priority") return t.priority ?? "";
+    if (sortBy === "start_date") return t.start_date ?? "";
+    if (sortBy === "due_date") return t.due_date ?? "";
+    if (sortBy === "assigned_to") return t.assigned_to ?? "";
+    return "";
+  };
+
+  arr.sort((a, b) => {
+    const A = getVal(a);
+    const B = getVal(b);
+
+    // DATE SORT
+    if (sortBy === "start_date" || sortBy === "due_date") {
+      const tA = A ? new Date(A).getTime() : 0;
+      const tB = B ? new Date(B).getTime() : 0;
+      return sortDir === "asc" ? tA - tB : tB - tA;
+    }
+
+    // STRING SORT
+    const sA = String(A).toLowerCase();
+    const sB = String(B).toLowerCase();
+
+    return sortDir === "asc"
+      ? sA.localeCompare(sB)
+      : sB.localeCompare(sA);
+  });
+
+  return arr;
+}, [filteredTasksBy, sortBy, sortDir]);
 
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredFlat.length / PAGE_SIZE));
@@ -282,7 +331,13 @@ export default function TasksPage() {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const data = await res.json();
+    if (!res.ok) {
+  const text = await res.text();
+  console.error("API ERROR:", text);
+  return;
+}
+
+const data = await res.json();
 
     console.log("API TASKS:", data.tasks); // debug üçün
 
@@ -360,10 +415,10 @@ export default function TasksPage() {
           "x-user-role": (user as any)?.role ?? "",
         },
       });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || "Delete failed");
-      }
+    if (!res.ok) {
+  const data = await res.json().catch(() => null);
+  throw new Error(data?.error || "Delete failed");
+}
     },
     [getToken, user?.id, user]
   );
@@ -387,6 +442,84 @@ export default function TasksPage() {
       channel.unsubscribe();
     };
   }, [user, loadTasks]);
+
+    // LOAD COMMENTS WHEN VIEW DRAWER OPENS
+  useEffect(() => {
+    if (!viewTask) return;
+
+    const loadComments = async () => {
+      const token = await getToken();
+      if (!token) return;
+
+      const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+   
+
+
+      if (!res.ok) {
+  console.error("COMMENT LOAD ERROR:", await res.text());
+  return;
+}
+
+const data = await res.json();
+setComments(Array.isArray(data.comments) ? data.comments : []);
+    };
+
+    loadComments();
+  }, [viewTask, getToken]);
+
+
+   const handleAddComment = async () => {
+  if (!viewTask) return;
+
+  const token = await getToken();
+  if (!token) return;
+
+  let uploaded: any[] = [];
+
+  for (const file of commentFiles) {
+    const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
+
+    const { error } = await supabase.storage
+      .from("task-comment-files")
+      .upload(fileName, file);
+
+    if (!error) {
+      uploaded.push({
+        name: file.name,
+        path: fileName,
+        size: file.size,
+      });
+    }
+  }
+
+  const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      comment: newComment.trim(),
+      files: uploaded,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error("COMMENT INSERT ERROR:", await res.text());
+    return;
+  }
+
+  const data = await res.json();
+
+  setComments((prev) => [data.comment, ...prev]);
+  setNewComment("");
+  setCommentFiles([]);
+};
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -709,18 +842,59 @@ export default function TasksPage() {
         </div>
 
         <table className="w-full text-sm">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-left">Title</th>
-              <th className="p-3 text-left">Status</th>
-              <th className="p-3 text-left">Priority</th>
-              <th className="p-3 text-left">Start</th>
-              <th className="p-3 text-left">Due</th>
-              <th className="p-3 text-left">Assigned</th>
-              <th className="p-3 text-left">Files</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
+       <thead className="bg-gray-100">
+  <tr>
+    <th
+      onClick={() => toggleSort("title")}
+      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
+    >
+      Title {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+
+    <th
+      onClick={() => toggleSort("status")}
+      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
+    >
+      Status {sortBy === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+
+    <th
+      onClick={() => toggleSort("priority")}
+      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
+    >
+      Priority {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+
+    <th
+      onClick={() => toggleSort("start_date")}
+      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
+    >
+      Start {sortBy === "start_date" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+
+    <th
+      onClick={() => toggleSort("due_date")}
+      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
+    >
+      Due {sortBy === "due_date" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+
+    <th
+      onClick={() => toggleSort("assigned_to")}
+      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
+    >
+      Assigned {sortBy === "assigned_to" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+    </th>
+
+    <th className="p-3 text-left">
+      Files
+    </th>
+
+    <th className="p-3 text-right">
+      Actions
+    </th>
+  </tr>
+</thead>
           <tbody>
             {paginatedTasks.map((t) => (
               <tr key={t.id} className="border-t hover:bg-gray-50">
@@ -815,11 +989,17 @@ export default function TasksPage() {
                     </button>
 
                     <button
-                      onClick={async () => {
-                        if (!confirm("Delete this task?")) return;
-                        await deleteTask(t.id);
-                        loadTasks();
-                      }}
+                     onClick={async () => {
+  if (!confirm("Delete this task?")) return;
+
+  try {
+    await deleteTask(t.id);
+    message.success("Task silindi");
+    loadTasks();
+  } catch (err: any) {
+    message.error(err?.message || "İcazə yoxdur");
+  }
+}}
                       className="border px-3 py-1.5 rounded-lg hover:bg-white text-red-600 border-red-200"
                     >
                       Delete
@@ -933,6 +1113,8 @@ export default function TasksPage() {
           }}
         />
       ) : null}
+
+      
 
 
 
@@ -1131,6 +1313,109 @@ export default function TasksPage() {
                 />
               ) : null}
 
+                            {/* COMMENTS SECTION */}
+              <div style={{ marginTop: 30 }}>
+                <h3 style={{ fontWeight: 900, marginBottom: 10 }}>
+                  💬 Şərhlər
+                </h3>
+
+                {comments.length ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                   {comments.map((c) => (
+  <div
+    key={c.id}
+    style={{
+      background: "#f3f4f6",
+      padding: 12,
+      borderRadius: 10,
+    }}
+  >
+    <div style={{ fontSize: 12, color: "#6b7280" }}>
+      {c.author_name} • {formatDMY(c.created_at, true)}
+    </div>
+
+    {c.message && (
+  <div style={{ marginTop: 6, fontWeight: 600 }}>
+    {c.message}
+  </div>
+)}
+
+    {/* 🔥 FILES BURADA OLMALIDIR */}
+    {c.files?.length ? (
+      <div style={{ marginTop: 8 }}>
+        {c.files.map((f: any, i: number) => (
+          <button
+            key={i}
+            onClick={async () => {
+              const { data } = await supabase.storage
+                .from("task-comment-files")
+                .createSignedUrl(f.path, 60);
+
+              if (data?.signedUrl) {
+                window.open(data.signedUrl, "_blank");
+              }
+            }}
+            style={{
+              display: "block",
+              fontSize: 12,
+              color: "#4f46e5",
+            }}
+          >
+            📎 {f.name}
+          </button>
+        ))}
+      </div>
+    ) : null}
+  </div>
+))}
+                  </div>
+                ) : (
+                  <div style={{ color: "#9ca3af", marginBottom: 10 }}>
+                    Hələ şərh yoxdur
+                  </div>
+                )}
+
+             
+
+                {/* ADD COMMENT */}
+                <div style={{ marginTop: 15 }}>
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Şərh yaz..."
+                    style={{
+                      width: "100%",
+                      borderRadius: 10,
+                      border: "1px solid #e5e7eb",
+                      padding: 10,
+                      minHeight: 80,
+                    }}
+                  />
+                  <input
+  type="file"
+  multiple
+  onChange={(e) =>
+    setCommentFiles(Array.from(e.target.files || []))
+  }
+  style={{ marginTop: 8 }}
+/>
+
+                  <button
+                    onClick={handleAddComment}
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      background: "#4f46e5",
+                      color: "#fff",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Göndər
+                  </button>
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -1189,7 +1474,10 @@ export default function TasksPage() {
       ) : null}
     </div>
   );
+
 }
+
+
 
 
 function MultiSelectDropdown({
@@ -1611,6 +1899,8 @@ function EditDrawer({ task, onClose, onSave }: EditDrawerProps) {
     </div>
   );
 }
+
+
 
 /* CREATE MODAL */
 function CreateTaskModal({

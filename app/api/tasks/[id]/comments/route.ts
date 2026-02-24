@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,109 +7,140 @@ const supabaseAdmin = createClient(
 );
 
 async function getRequestUser(req: Request) {
-  const userId = req.headers.get("x-user-id");
-  const role = req.headers.get("x-user-role");
+  const token = req.headers.get("authorization")?.replace("Bearer ", "");
+  if (!token) throw new Error("Unauthorized");
 
-  if (!userId || !role) throw new Error("Unauthorized");
+  const { data } = await supabaseAdmin.auth.getUser(token);
+  if (!data?.user) throw new Error("Unauthorized");
 
-  return { id: userId, role };
+  const { data: employee } = await supabaseAdmin
+    .from("employees")
+    .select("id")
+    .eq("user_id", data.user.id)
+    .single();
+
+  if (!employee) throw new Error("Employee not found");
+
+  return employee.id; // employees.id qaytarırıq
 }
 
-// ========================
-// GET - List comments
-// ========================
+/* ================= GET COMMENTS ================= */
+
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id;
+    const { id } = await context.params;
 
-    const { data, error } = await supabaseAdmin
+    const { data: comments, error } = await supabaseAdmin
       .from("task_comments")
-      .select(`
-        *,
-        author:employees!task_comments_author_id_fkey(id,ad,soyad)
-      `)
-      .eq("task_id", taskId)
-      .order("created_at");
+      .select("*")
+      .eq("task_id", id)
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
+    if (!comments?.length) {
+      return NextResponse.json({ comments: [] });
+    }
 
-    return NextResponse.json({ comments: data ?? [] });
+    const authorIds = [...new Set(comments.map(c => c.author_id))];
+
+    const { data: employees } = await supabaseAdmin
+      .from("employees")
+      .select("id, ad, soyad")
+      .in("id", authorIds);
+
+    const formatted = comments.map((c) => {
+      const emp = employees?.find(
+        (e) => e.id === c.author_id
+      );
+
+      return {
+        id: c.id,
+        message: c.body, // 🔥 DB column body → API field message
+        created_at: c.created_at,
+        author_name: emp
+          ? `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim()
+          : "Unknown",
+        files: Array.isArray(c.files) ? c.files : [],
+      };
+    });
+
+    return NextResponse.json({ comments: formatted });
+
   } catch (e: any) {
+    console.error("COMMENT LOAD ERROR:", e);
     return NextResponse.json(
       { error: e.message },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }
 
-// ========================
-// POST - Add comment
-// ========================
+/* ================= ADD COMMENT ================= */
+
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getRequestUser(req);
-    const taskId = params.id;
-    const { body } = await req.json();
+    const { id: taskId } = await context.params;
+    const employeeId = await getRequestUser(req);
 
-    if (!body) throw new Error("Comment boş ola bilməz");
+    const body = await req.json();
 
-    const { data: comment, error } = await supabaseAdmin
+    const hasMessage =
+      typeof body.comment === "string" &&
+      body.comment.trim().length > 0;
+
+    const hasFiles =
+      Array.isArray(body.files) &&
+      body.files.length > 0;
+
+    if (!hasMessage && !hasFiles) {
+      return NextResponse.json(
+        { error: "Empty comment" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
       .from("task_comments")
       .insert({
         task_id: taskId,
-        author_id: user.id,
-        body,
+        author_id: employeeId,
+        body: hasMessage ? body.comment.trim() : null, // 🔥 DÜZGÜN COLUMN
+        files: hasFiles ? body.files : [],
       })
       .select()
       .single();
 
     if (error) throw error;
 
-    // 🔔 Notification - task owner və assignee üçün
-    const { data: task } = await supabaseAdmin
-      .from("tasks")
-      .select("assigned_to, created_by, title")
-      .eq("id", taskId)
+    const { data: emp } = await supabaseAdmin
+      .from("employees")
+      .select("ad, soyad")
+      .eq("id", employeeId)
       .single();
 
-    const notifyUsers = new Set<string>();
-
-    if (task?.assigned_to && task.assigned_to !== user.id)
-      notifyUsers.add(task.assigned_to);
-
-    if (task?.created_by && task.created_by !== user.id)
-      notifyUsers.add(task.created_by);
-
-    for (const uid of notifyUsers) {
-      await supabaseAdmin.from("notifications").insert({
-        user_id: uid,
-        type: "COMMENT",
-        title: "Yeni comment",
-        body: `Task: ${task?.title}`,
-        task_id: taskId,
-        comment_id: comment.id,
-      });
-    }
-
-    // 📝 Activity log
-    await supabaseAdmin.from("task_activity").insert({
-      task_id: taskId,
-      actor_id: user.id,
-      action: "COMMENTED",
-      new_data: { comment_id: comment.id },
+    return NextResponse.json({
+      comment: {
+        id: data.id,
+        message: data.body, // 🔥 DB body → frontend message
+        created_at: data.created_at,
+        author_name: emp
+          ? `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim()
+          : "Unknown",
+        files: Array.isArray(data.files) ? data.files : [],
+      },
     });
 
-    return NextResponse.json({ comment });
   } catch (e: any) {
+    console.error("COMMENT INSERT ERROR:", e);
     return NextResponse.json(
-      { error: e.message },
-      { status: 400 }
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
     );
   }
 }
