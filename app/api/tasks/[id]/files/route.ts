@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
@@ -6,7 +6,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-async function getRequestUser(req: Request) {
+async function getRequestUser(req: NextRequest) {
   const userId = req.headers.get("x-user-id");
   const role = req.headers.get("x-user-role");
 
@@ -15,15 +15,15 @@ async function getRequestUser(req: Request) {
   return { id: userId, role };
 }
 
-// =======================
-// GET - File list
-// =======================
+/* =======================
+   GET - File list
+======================= */
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id;
+    const { id: taskId } = await context.params;
 
     const { data, error } = await supabaseAdmin
       .from("task_files")
@@ -35,27 +35,29 @@ export async function GET(
 
     return NextResponse.json({ files: data ?? [] });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 400 }
+    );
   }
 }
 
-// =======================
-// POST - Upload file
-// =======================
+/* =======================
+   POST - Upload file
+======================= */
 export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getRequestUser(req);
-    const taskId = params.id;
+    const { id: taskId } = await context.params;
+    const user = await getRequestUser(request);
 
-    const formData = await req.formData();
+    const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) throw new Error("File tapılmadı");
 
-    // limit 20MB
     if (file.size > 20 * 1024 * 1024) {
       throw new Error("Max 20MB");
     }
@@ -63,7 +65,6 @@ export async function POST(
     const ext = file.name.split(".").pop();
     const path = `${taskId}/${Date.now()}.${ext}`;
 
-    // upload storage
     const { error: uploadError } = await supabaseAdmin.storage
       .from("task-files")
       .upload(path, file, {
@@ -72,7 +73,6 @@ export async function POST(
 
     if (uploadError) throw uploadError;
 
-    // metadata DB
     const { data: fileRow, error } = await supabaseAdmin
       .from("task_files")
       .insert({
@@ -88,7 +88,6 @@ export async function POST(
 
     if (error) throw error;
 
-    // 🔔 Notification
     const { data: task } = await supabaseAdmin
       .from("tasks")
       .select("assigned_to, created_by, title")
@@ -114,7 +113,6 @@ export async function POST(
       });
     }
 
-    // 📝 Activity log
     await supabaseAdmin.from("task_activity").insert({
       task_id: taskId,
       actor_id: user.id,
@@ -124,21 +122,25 @@ export async function POST(
 
     return NextResponse.json({ file: fileRow });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 400 }
+    );
   }
 }
 
-// =======================
-// DELETE - Remove file
-// =======================
+/* =======================
+   DELETE - Remove file
+======================= */
 export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getRequestUser(req);
-    const taskId = params.id;
-    const { searchParams } = new URL(req.url);
+    const { id: taskId } = await context.params;
+    const user = await getRequestUser(request);
+
+    const { searchParams } = new URL(request.url);
     const fileId = searchParams.get("fileId");
 
     if (!fileId) throw new Error("fileId lazımdır");
@@ -151,7 +153,6 @@ export async function DELETE(
 
     if (!fileRow) throw new Error("File tapılmadı");
 
-    // yalnız BOSS və ya uploader silə bilər
     if (
       user.role !== "BOSS" &&
       fileRow.uploaded_by !== user.id
@@ -170,6 +171,9 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 400 }
+    );
   }
 }
