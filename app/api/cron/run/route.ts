@@ -1,5 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
+/* ================= SECURITY ================= */
+
+function checkCronSecret(request: NextRequest) {
+  const secret = request.headers.get("x-cron-secret");
+  return secret === process.env.CRON_SECRET;
+}
 
 /* ================= HELPERS ================= */
 
@@ -13,7 +20,6 @@ function todayISO() {
 function extractAssignedIds(raw: any): string[] {
   if (!raw) return [];
 
-  // JSONB gələndə string kimi də gələ bilər
   if (typeof raw === "string") {
     try {
       raw = JSON.parse(raw);
@@ -45,8 +51,16 @@ function extractAssignedIds(raw: any): string[] {
 
 /* ================= CRON ================= */
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    /* 🔐 Secret check */
+    if (!checkCronSecret(request)) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -54,45 +68,57 @@ export async function GET() {
 
     const today = todayISO();
 
-    console.log("=================================");
     console.log("CRON START:", today);
-    console.log("=================================");
 
-    /* 1️⃣ Due rule-ları tap */
-    const { data: rules, error: ruleError } = await supabase
+    const { data: rules, error } = await supabase
       .from("recurring_rules")
       .select("*")
       .lte("next_run_date", today)
       .eq("is_active", true);
 
-    if (ruleError) {
-      console.log("RULE FETCH ERROR:", ruleError);
-      return NextResponse.json(
-        { error: ruleError.message },
-        { status: 500 }
-      );
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     if (!rules || rules.length === 0) {
-      console.log("NO RULES DUE");
       return NextResponse.json({ message: "No rules due today" });
     }
 
-    console.log("RULE COUNT:", rules.length);
-
     for (const rule of rules) {
-      console.log("PROCESSING RULE:", rule.title);
+      console.log("PROCESSING:", rule.title);
 
-      /* 2️⃣ End date keçibsə skip */
-     if (rule.end_date && rule.end_date < today) {
-  await supabase
-    .from("recurring_rules")
-    .update({ is_active: false })
-    .eq("id", rule.id);
+      /* 1️⃣ End date check */
+      if (rule.end_date && rule.end_date < today) {
+        await supabase
+          .from("recurring_rules")
+          .update({ is_active: false })
+          .eq("id", rule.id);
 
-  console.log("RULE AUTO-DEACTIVATED:", rule.title);
-  continue;
-}
+        console.log("AUTO DEACTIVATED:", rule.title);
+        continue;
+      }
+
+      /* 2️⃣ WEEKLY weekday check */
+      if (rule.frequency === "WEEKLY") {
+        const weekDays: number[] = rule.week_days || [];
+        const checkDate = new Date(rule.next_run_date + "T00:00:00+04:00");
+        const dow = checkDate.getDay();
+
+        if (!weekDays.includes(dow)) {
+          const next = new Date(rule.next_run_date + "T00:00:00+04:00");
+          next.setDate(next.getDate() + 1);
+
+          await supabase
+            .from("recurring_rules")
+            .update({
+              next_run_date: next.toISOString().split("T")[0],
+            })
+            .eq("id", rule.id);
+
+          console.log("WEEKLY SKIPPED:", rule.title);
+          continue;
+        }
+      }
 
       /* 3️⃣ Duplicate protection */
       const { data: existing } = await supabase
@@ -103,11 +129,11 @@ export async function GET() {
         .limit(1);
 
       if (existing && existing.length > 0) {
-        console.log("TASK ALREADY EXISTS:", rule.title);
+        console.log("ALREADY EXISTS:", rule.title);
         continue;
       }
 
-      /* 4️⃣ created_by auth → employee */
+      /* 4️⃣ Creator mapping */
       const { data: creator } = await supabase
         .from("employees")
         .select("id")
@@ -115,12 +141,12 @@ export async function GET() {
         .single();
 
       if (!creator) {
-        console.log("CREATOR NOT FOUND:", rule.created_by);
+        console.log("CREATOR NOT FOUND");
         continue;
       }
 
-      /* 5️⃣ Task insert (id qaytarırıq) */
-      const { data: createdTask, error: insertError } = await supabase
+      /* 5️⃣ Create task */
+      const { data: createdTask } = await supabase
         .from("tasks")
         .insert({
           title: rule.title,
@@ -136,100 +162,65 @@ export async function GET() {
         .select("id")
         .single();
 
-      if (insertError || !createdTask) {
-        console.log("TASK INSERT ERROR:", insertError);
-        continue;
-      }
+      if (!createdTask) continue;
 
       console.log("TASK CREATED:", createdTask.id);
 
-      /* 6️⃣ ASSIGNEES əlavə et */
+      /* 6️⃣ Assignees */
       const assignedIds = extractAssignedIds(rule.assigned_to);
 
-      let employeeIds: string[] = [];
-
       if (assignedIds.length > 0) {
-        // əvvəl employee.id kimi yoxla
-        const { data: byEmp } = await supabase
+        const { data: employees } = await supabase
           .from("employees")
-          .select("id")
-          .in("id", assignedIds);
+          .select("id,user_id")
+          .or(
+            `id.in.(${assignedIds.join(",")}),user_id.in.(${assignedIds.join(
+              ","
+            )})`
+          );
 
-        if (byEmp && byEmp.length > 0) {
-          employeeIds = byEmp.map((e: any) => e.id);
-        }
+        const employeeIds =
+          employees?.map((e: any) => e.id) ?? [];
 
-        // əgər tapılmadısa auth user_id kimi yoxla
-        if (employeeIds.length === 0) {
-          const { data: byUser } = await supabase
-            .from("employees")
-            .select("id,user_id")
-            .in("user_id", assignedIds);
-
-          if (byUser && byUser.length > 0) {
-            employeeIds = byUser.map((e: any) => e.id);
-          }
-        }
-      }
-
-      if (employeeIds.length > 0) {
-        const assigneeRows = employeeIds.map((empId) => ({
-          task_id: createdTask.id,
-          employee_id: empId,
-        }));
-
-        const { error: assErr } = await supabase
-          .from("task_assignees")
-          .insert(assigneeRows);
-
-        if (assErr) {
-          console.log("ASSIGNEE INSERT ERROR:", assErr);
-        } else {
-          console.log("ASSIGNEES ADDED:", employeeIds.length);
+        if (employeeIds.length > 0) {
+          await supabase.from("task_assignees").insert(
+            employeeIds.map((empId) => ({
+              task_id: createdTask.id,
+              employee_id: empId,
+            }))
+          );
         }
       }
 
-      /* 7️⃣ Next run date hesabla */
+      /* 7️⃣ Next run update */
       let next = new Date(rule.next_run_date + "T00:00:00+04:00");
-      let safetyCounter = 0;
 
-      while (
-        next.toISOString().split("T")[0] <= today &&
-        safetyCounter < 365
-      ) {
-        if (rule.frequency === "DAILY") {
-          next.setDate(next.getDate() + rule.interval);
-        }
-
-        if (rule.frequency === "WEEKLY") {
-          next.setDate(next.getDate() + 7 * rule.interval);
-        }
-
-        if (rule.frequency === "MONTHLY") {
-          next.setMonth(next.getMonth() + rule.interval);
-        }
-
-        safetyCounter++;
+      if (rule.frequency === "DAILY") {
+        next.setDate(next.getDate() + (rule.interval ?? 1));
       }
 
-      const nextDate = next.toISOString().split("T")[0];
+      if (rule.frequency === "WEEKLY") {
+        next.setDate(next.getDate() + 1);
+      }
+
+      if (rule.frequency === "MONTHLY") {
+        next.setMonth(next.getMonth() + (rule.interval ?? 1));
+      }
 
       await supabase
         .from("recurring_rules")
-        .update({ next_run_date: nextDate })
+        .update({
+          next_run_date: next.toISOString().split("T")[0],
+        })
         .eq("id", rule.id);
 
-      console.log("NEXT RUN UPDATED:", nextDate);
+      console.log("NEXT UPDATED:", rule.title);
     }
 
-    console.log("CRON FINISHED");
-    console.log("=================================");
+    return NextResponse.json({ message: "Cron success" });
 
-    return NextResponse.json({
-      message: "Cron executed successfully",
-    });
   } catch (err: any) {
-    console.log("CRON FATAL ERROR:", err);
+    console.error("CRON ERROR:", err);
     return NextResponse.json(
       { error: err.message || "Cron failed" },
       { status: 500 }

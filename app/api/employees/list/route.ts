@@ -77,32 +77,66 @@ export async function GET(req: Request) {
     }
 
     // 🟡 REHBER → yalnız öz işçiləri
-    if (user.role === "REHBER") {
-      const { data: relations, error: relError } =
-        await supabaseAdmin
-          .from("employee_guides")
-          .select("employee_id")
-          .eq("guide_id", user.id);
+   // 🟡 REHBER → öz işçiləri + sub-rehber işçiləri (recursive)
+if (user.role === "REHBER") {
 
-      if (relError) throw relError;
+  const collected = new Set<string>();
 
-      const employeeIds =
-        relations?.map((r) => r.employee_id) ?? [];
+  const collectEmployees = async (guideId: string) => {
 
-      if (employeeIds.length === 0) {
-        return NextResponse.json({ employees: [] });
+    const { data: relations, error } = await supabaseAdmin
+      .from("employee_guides")
+      .select("employee_id")
+      .eq("guide_id", guideId);
+
+    if (error) throw error;
+
+    const ids = relations?.map(r => r.employee_id) ?? [];
+
+    for (const id of ids) {
+
+      if (collected.has(id)) continue;
+
+      collected.add(id);
+
+      // 🔍 Bu employee rehberdirmi?
+    const { data: emp, error: empErr } = await supabaseAdmin
+  .from("employees")
+  .select("id, roles(name)")
+  .eq("id", id)
+  .single<EmployeeWithRole>();
+
+if (empErr) throw empErr;
+
+const role =
+  Array.isArray(emp.roles)
+    ? emp.roles[0]?.name ?? null
+    : emp.roles?.name ?? null;
+
+      if (role === "REHBER") {
+        await collectEmployees(id); // 🔥 recursion
       }
-
-      const { data, error } = await supabaseAdmin
-        .from("employees")
-        .select("id, ad, soyad")
-        .in("id", employeeIds)
-        .order("ad");
-
-      if (error) throw error;
-
-      return NextResponse.json({ employees: data });
     }
+  };
+
+  await collectEmployees(user.id);
+
+  const employeeIds = Array.from(collected);
+
+  if (employeeIds.length === 0) {
+    return NextResponse.json({ employees: [] });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("employees")
+    .select("id, ad, soyad")
+    .in("id", employeeIds)
+    .order("ad");
+
+  if (error) throw error;
+
+  return NextResponse.json({ employees: data });
+}
 
     // 🔴 EMPLOYEE → yalnız özünü
     if (user.role === "EMPLOYEE") {

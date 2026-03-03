@@ -63,6 +63,7 @@ type Task = {
   updated_at?: string | null;
   files?: TaskFile[]; // 🔥 əlavə olundu
   comment_count?: number; // 🔥 BUNU ƏLAVƏ ET
+  creator_name?: string | null; // 🔥 BUNU ƏLAVƏ ET
 };
 
 type TasksByStatus = Record<Status, Task[]>;
@@ -162,7 +163,7 @@ export default function TasksPage() {
 
   const searchParams = useSearchParams();
   const openTaskId = searchParams.get("open");
-const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
+  const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
@@ -392,7 +393,8 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
           ? t.sort_index
           : Number(t.sort_index ?? 0),
       files: Array.isArray(t.files) ? t.files : [],
-      comment_count: t.comment_count ?? 0, // 🔥 ƏLAVƏ ET
+      comment_count: t.comment_count ?? 0,
+      creator_name: t.creator_name ?? null, // 🔥 BUNU ƏLAVƏ ET
     }));
 
 
@@ -831,8 +833,8 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
           <button
             onClick={() => setViewMode("board")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${viewMode === "board"
-                ? "bg-white shadow text-indigo-600"
-                : "text-gray-600"
+              ? "bg-white shadow text-indigo-600"
+              : "text-gray-600"
               }`}
           >
             Board
@@ -841,23 +843,22 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
           <button
             onClick={() => setViewMode("list")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${viewMode === "list"
-                ? "bg-white shadow text-indigo-600"
-                : "text-gray-600"
+              ? "bg-white shadow text-indigo-600"
+              : "text-gray-600"
               }`}
           >
             List
           </button>
 
           <button
-  onClick={() => setViewMode("calendar")}
-  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-    viewMode === "calendar"
-      ? "bg-white shadow text-indigo-600"
-      : "text-gray-600"
-  }`}
->
-  Calendar
-</button>
+            onClick={() => setViewMode("calendar")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${viewMode === "calendar"
+              ? "bg-white shadow text-indigo-600"
+              : "text-gray-600"
+              }`}
+          >
+            Calendar
+          </button>
         </div>
 
 
@@ -912,47 +913,47 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
 
 
       {/* ===================== MODERN BOARD ===================== */}
-{viewMode === "board" && (
-  <DndContext
-    sensors={sensors}
-    collisionDetection={closestCenter}
-    onDragStart={handleDragStart}
-    onDragEnd={handleDragEnd}
-  >
-    <div className="flex gap-6 overflow-x-auto pb-6 pt-2">
-      {memoizedColumns.map((col) => (
-        <div
-          key={col.id}
-          className="min-w-[340px] max-w-[340px] flex-shrink-0"
+      {viewMode === "board" && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
         >
-          <Column
-            id={col.id}
-            title={col.id}
-            tasks={col.tasks}
-            onSelect={(task) => {
-              setViewTask(task);
-              setDrawerOpen(true);
-            }}
-          />
-        </div>
-      ))}
-    </div>
+          <div className="flex gap-6 overflow-x-auto pb-6 pt-2">
+            {memoizedColumns.map((col) => (
+              <div
+                key={col.id}
+                className="min-w-[340px] max-w-[340px] flex-shrink-0"
+              >
+                <Column
+                  id={col.id}
+                  title={col.id}
+                  tasks={col.tasks}
+                  onSelect={(task) => {
+                    setViewTask(task);
+                    setDrawerOpen(true);
+                  }}
+                />
+              </div>
+            ))}
+          </div>
 
-    <DragOverlay>
-      {activeTask && (
-        <div className="bg-white p-5 rounded-3xl shadow-2xl border w-[300px]">
-          <div className="font-semibold text-gray-900">
-            {activeTask.title}
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-            <span>{activeTask.status.replace("_", " ")}</span>
-            <PriorityPill p={String(activeTask.priority)} />
-          </div>
-        </div>
+          <DragOverlay>
+            {activeTask && (
+              <div className="bg-white p-5 rounded-3xl shadow-2xl border w-[300px]">
+                <div className="font-semibold text-gray-900">
+                  {activeTask.title}
+                </div>
+                <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                  <span>{activeTask.status.replace("_", " ")}</span>
+                  <PriorityPill p={String(activeTask.priority)} />
+                </div>
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       )}
-    </DragOverlay>
-  </DndContext>
-)}
 
       {viewMode === "list" && (
         <>
@@ -1115,7 +1116,14 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
                 <tbody>
                   {paginatedTasks.map((t) => (
                     <tr key={t.id} className="border-t hover:bg-gray-50">
-                      <td className="p-3 font-medium">{t.title}</td>
+                      <td className="p-3">
+                        <div className="font-medium">{t.title}</div>
+                        {t.creator_name && (
+                          <div className="text-[11px] text-gray-400">
+                            {t.creator_name} tərəfindən yaradılıb
+                          </div>
+                        )}
+                      </td>
                       <td className="p-3">{t.status}</td>
                       <td className="p-3"><PriorityPill p={String(t.priority)} /></td>
                       <td className="p-3">{formatDMY(t.start_date)}</td>
@@ -1313,11 +1321,11 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
       )}
 
       {viewMode === "calendar" && (
-  <CalendarView tasks={filteredFlat} onSelectTask={(t) => {
-    setViewTask(t);
-    setDrawerOpen(true);
-  }} />
-)}
+        <CalendarView tasks={filteredFlat} onSelectTask={(t) => {
+          setViewTask(t);
+          setDrawerOpen(true);
+        }} />
+      )}
 
       {/* ACTIVITY PANEL
       <div className="bg-white p-6 rounded-2xl shadow border">
@@ -1628,6 +1636,11 @@ const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board")
                     ? viewTask.assigned_to.join(", ")
                     : "-"
                 }
+              />
+
+              <DrawerRow
+                label="Yaradan"
+                value={viewTask.creator_name ?? "-"}
               />
 
               <DrawerRow
@@ -2165,21 +2178,30 @@ const TaskCard = React.memo(function TaskCard({
   border-slate-200
   select-none
   relative ${isDone
-        ? "cursor-default opacity-70"
-        : "hover:shadow-md cursor-grab active:cursor-grabbing"
+          ? "cursor-default opacity-70"
+          : "hover:shadow-md cursor-grab active:cursor-grabbing"
         }`}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(task);
       }}
     >
+
+      {task.creator_name && (
+        <div className="text-[11px] text-gray-400 mt-1">
+          {task.creator_name} tərəfindən yaradılıb
+        </div>
+      )}
+
       <div className="font-semibold text-gray-900">
         {task.title}
       </div>
 
+
+
       <div className="absolute top-3 right-3 text-[10px] text-gray-400 font-semibold">
-  #{task.id.slice(0, 4)}
-</div>
+        #{task.id.slice(0, 4)}
+      </div>
 
       <div className="
   mt-2

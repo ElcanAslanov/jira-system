@@ -59,21 +59,52 @@ export async function GET(req: Request) {
   try {
     const user = await getRequestUser(req);
 
+    // 🔥 RECURSIVE: bütün alt rehber və employee-ləri tapmaq üçün
+    async function getAllSubordinates(rootId: string): Promise<string[]> {
+      const visited = new Set<string>();
+      const stack = [rootId];
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) continue;
+
+        const { data } = await supabaseAdmin
+          .from("employee_guides")
+          .select("employee_id")
+          .eq("guide_id", current);
+
+        const children = data?.map((r) => r.employee_id) ?? [];
+
+        for (const child of children) {
+          if (!visited.has(child)) {
+            visited.add(child);
+            stack.push(child);
+          }
+        }
+      }
+
+      return Array.from(visited);
+    }
+
     let tasks: any[] = [];
 
     const baseSelect = `
-      id,
-      title,
-      description,
-      status,
-      priority,
-      start_date,
-      due_date,
-      sort_index,
-      created_at,
-      updated_at,
-      created_by
-    `;
+  id,
+  title,
+  description,
+  status,
+  priority,
+  start_date,
+  due_date,
+  sort_index,
+  created_at,
+  updated_at,
+  created_by,
+  creator:employees!tasks_created_by_fkey (
+    ad,
+    soyad
+  )
+`;
 
     /* ================= ADMIN / BOSS ================= */
 
@@ -89,30 +120,98 @@ export async function GET(req: Request) {
 
     /* ================= REHBER / EMPLOYEE ================= */
 
-    else {
-      const { data: assignedRows, error: assignErr } =
+    /* ================= REHBER ================= */
+
+    else if (user.role === "REHBER") {
+
+      // 1️⃣ özünə assign olunan
+      const { data: selfAssigned } =
         await supabaseAdmin
           .from("task_assignees")
           .select("task_id")
           .eq("employee_id", user.id);
 
-      if (assignErr) throw assignErr;
+      const selfTaskIds =
+        selfAssigned?.map(r => r.task_id) ?? [];
+
+      // 2️⃣ öz işçiləri
+      // 🔥 bütün alt rehber və employee-ləri tap
+      const employeeIds = await getAllSubordinates(user.id);
+
+      // 3️⃣ işçilərə assign olunan tasklar
+      let employeeTaskIds: string[] = [];
+
+      if (employeeIds.length) {
+        const { data: employeeAssigned } =
+          await supabaseAdmin
+            .from("task_assignees")
+            .select("task_id")
+            .in("employee_id", employeeIds);
+
+        employeeTaskIds =
+          employeeAssigned?.map(r => r.task_id) ?? [];
+      }
+
+      // 4️⃣ öz yaratdığı tasklar
+      const { data: createdTasks } =
+        await supabaseAdmin
+          .from("tasks")
+          .select("id")
+          .eq("created_by", user.id);
+
+      const createdTaskIds =
+        createdTasks?.map(r => r.id) ?? [];
+
+      const allTaskIds = [
+        ...selfTaskIds,
+        ...employeeTaskIds,
+        ...createdTaskIds
+      ];
+
+      const uniqueTaskIds = [...new Set(allTaskIds)];
+
+      if (!uniqueTaskIds.length) {
+        return NextResponse.json({ tasks: [] });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from("tasks")
+        .select(baseSelect)
+        .in("id", uniqueTaskIds)
+        .order("sort_index");
+
+      if (error) throw error;
+
+      tasks = data ?? [];
+    }
+
+
+    /* ================= EMPLOYEE ================= */
+
+    else if (user.role === "EMPLOYEE") {
+
+      const { data: assignedRows } =
+        await supabaseAdmin
+          .from("task_assignees")
+          .select("task_id")
+          .eq("employee_id", user.id);
 
       const assignedTaskIds =
         assignedRows?.map((r) => r.task_id) ?? [];
 
-      if (assignedTaskIds.length > 0) {
-        const { data, error } = await supabaseAdmin
-          .from("tasks")
-          .select(baseSelect)
-          .in("id", assignedTaskIds)
-          .order("sort_index");
-
-        if (error) throw error;
-        tasks = data ?? [];
-      } else {
-        tasks = [];
+      if (!assignedTaskIds.length) {
+        return NextResponse.json({ tasks: [] });
       }
+
+      const { data, error } = await supabaseAdmin
+        .from("tasks")
+        .select(baseSelect)
+        .in("id", assignedTaskIds)
+        .order("sort_index");
+
+      if (error) throw error;
+
+      tasks = data ?? [];
     }
 
     if (!tasks.length) {
@@ -123,11 +222,11 @@ export async function GET(req: Request) {
 
     /* ===== COMMENT COUNTS ===== */
 
-/* ===== COMMENT + READ DATA ===== */
+    /* ===== COMMENT + READ DATA ===== */
 
-const { data: comments } = await supabaseAdmin
-  .from("task_comments")
-  .select(`
+    const { data: comments } = await supabaseAdmin
+      .from("task_comments")
+      .select(`
     id,
     task_id,
     author_id,
@@ -135,27 +234,27 @@ const { data: comments } = await supabaseAdmin
       employee_id
     )
   `)
-  .in("task_id", taskIds);
+      .in("task_id", taskIds);
 
-const unreadMap: Record<string, number> = {};
+    const unreadMap: Record<string, number> = {};
 
-comments?.forEach((c) => {
-    console.log("USER:", user.id);
-  console.log("COMMENT:", c.id);
-  console.log("AUTHOR:", c.author_id);
-  console.log("READS:", c.task_comment_reads);
+    comments?.forEach((c) => {
+      console.log("USER:", user.id);
+      console.log("COMMENT:", c.id);
+      console.log("AUTHOR:", c.author_id);
+      console.log("READS:", c.task_comment_reads);
 
-  // 🔥 author_id artıq employee.id-dir
-  if (c.author_id === user.id) return;
+      // 🔥 author_id artıq employee.id-dir
+      if (c.author_id === user.id) return;
 
-  const alreadyRead = c.task_comment_reads?.some(
-    (r: any) => r.employee_id === user.id
-  );
+      const alreadyRead = c.task_comment_reads?.some(
+        (r: any) => r.employee_id === user.id
+      );
 
-  if (!alreadyRead) {
-    unreadMap[c.task_id] = (unreadMap[c.task_id] || 0) + 1;
-  }
-});
+      if (!alreadyRead) {
+        unreadMap[c.task_id] = (unreadMap[c.task_id] || 0) + 1;
+      }
+    });
 
     /* ===== ASSIGNEES ===== */
 
@@ -184,38 +283,47 @@ comments?.forEach((c) => {
         `)
         .in("task_id", taskIds);
 
-  const finalTasks = tasks.map((task) => {
-  const relatedAssignees =
-    assignees?.filter((a) => a.task_id === task.id) ?? [];
+    const finalTasks = tasks.map((task) => {
+      const relatedAssignees =
+        assignees?.filter((a) => a.task_id === task.id) ?? [];
 
-  const names: string[] = relatedAssignees
-    .map((r) => {
-      const emp = Array.isArray(r.employees)
-        ? r.employees[0]
-        : r.employees;
+      const names: string[] = relatedAssignees
+        .map((r) => {
+          const emp = Array.isArray(r.employees)
+            ? r.employees[0]
+            : r.employees;
 
-      if (!emp) return null;
-      return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
-    })
-    .filter(Boolean) as string[];
+          if (!emp) return null;
+          return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
+        })
+        .filter(Boolean) as string[];
 
-  const relatedFiles =
-    files?.filter((f) => f.task_id === task.id) ?? [];
+      const relatedFiles =
+        files?.filter((f) => f.task_id === task.id) ?? [];
 
-  // 🔥 COMMENT COUNT HESABLAYIRIQ
- const commentCount = unreadMap[task.id] ?? 0;
+      // 🔥 COMMENT COUNT HESABLAYIRIQ
+      const commentCount = unreadMap[task.id] ?? 0;
 
-  return {
-    ...task,
-    comment_count: commentCount, // ✅ YENİ SAHƏ
-    assigned_to: names,
-    files: relatedFiles.map((f) => ({
-      name: f.original_name,
-      path: f.path,
-      size: f.size_bytes,
-    })),
-  };
-});
+      const creator = Array.isArray(task.creator)
+        ? task.creator[0]
+        : task.creator;
+
+      const creatorName = creator
+        ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
+        : null;
+
+      return {
+        ...task,
+        creator_name: creatorName, // 🔥 YENİ FIELD
+        comment_count: commentCount,
+        assigned_to: names,
+        files: relatedFiles.map((f) => ({
+          name: f.original_name,
+          path: f.path,
+          size: f.size_bytes,
+        })),
+      };
+    });
 
     return NextResponse.json({ tasks: finalTasks });
 
@@ -245,13 +353,13 @@ export async function POST(req: Request) {
     const start_date = formData.get("start_date")?.toString() || null;
     const due_date = formData.get("due_date")?.toString() || null;
 
-   const assignedIds: string[] = [];
+    const assignedIds: string[] = [];
 
-formData.forEach((value, key) => {
-  if (key === "assigned_to[]") {
-    assignedIds.push(value.toString());
-  }
-});
+    formData.forEach((value, key) => {
+      if (key === "assigned_to[]") {
+        assignedIds.push(value.toString());
+      }
+    });
     const files = formData.getAll("files") as File[];
 
     if (!title) throw new Error("Title required");
@@ -277,7 +385,7 @@ formData.forEach((value, key) => {
 
     if (error || !task) throw error || new Error("Task create failed");
 
-  
+
 
     /* ===== INSERT ASSIGNEES ===== */
 
@@ -288,27 +396,27 @@ formData.forEach((value, key) => {
       }))
     );
 
-/* ===== INSERT NOTIFICATIONS ===== */
+    /* ===== INSERT NOTIFICATIONS ===== */
 
-const notifPayload = assignedIds.map((empId) => ({
-  user_id: empId,
-  type: "TASK_ASSIGNED",
-  title: "Yeni tapşırıq",
-  body: `Sizə "${title}" tapşırıldı`,
-  task_id: task.id,
-}));
+    const notifPayload = assignedIds.map((empId) => ({
+      user_id: empId,
+      type: "TASK_ASSIGNED",
+      title: "Yeni tapşırıq",
+      body: `Sizə "${title}" tapşırıldı`,
+      task_id: task.id,
+    }));
 
 
-const { data: notifData, error: notifErr } =
- await supabaseAdmin.from("notifications").insert(
-  assignedIds.map((empId) => ({
-    user_id: empId,
-    type: "TASK_ASSIGNED",
-    title: "Yeni tapşırıq",
-    body: `Sizə "${title}" tapşırıldı`,
-    task_id: task.id,
-  }))
-);
+    const { data: notifData, error: notifErr } =
+      await supabaseAdmin.from("notifications").insert(
+        assignedIds.map((empId) => ({
+          user_id: empId,
+          type: "TASK_ASSIGNED",
+          title: "Yeni tapşırıq",
+          body: `Sizə "${title}" tapşırıldı`,
+          task_id: task.id,
+        }))
+      );
 
     /* ===== FILE UPLOAD (optional) ===== */
 
@@ -334,7 +442,7 @@ const { data: notifData, error: notifErr } =
     }
 
     return NextResponse.json({ task });
-    
+
 
   } catch (e: any) {
     console.error("TASKS CREATE ERROR:", e);
