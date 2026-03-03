@@ -241,9 +241,15 @@ const visibleGroups = useMemo(() => {
   }, [pathname, visibleGroups]);
 
   const logout = async () => {
+  try {
     await supabase.auth.signOut();
-    router.push("/login");
-  };
+
+    // 🔥 bütün state reset üçün tam reload
+    window.location.href = "/login";
+  } catch (err) {
+    console.error("Logout error:", err);
+  }
+};
 
   return (
     <aside className="fixed top-0 left-0 w-64 h-screen bg-gradient-to-b from-[#0f172a] to-[#111827] text-white flex flex-col shadow-xl">

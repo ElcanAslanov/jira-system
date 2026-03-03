@@ -18,40 +18,162 @@ function safeStr(v: unknown) {
 /* GET */
 /* ======================= */
 
-export async function GET() {
-  const { data, error } = await supabaseAdmin
+export async function GET(request: Request) {
+  // 1️⃣ Login user tap
+  const authHeader = request.headers.get("authorization");
+
+  if (!authHeader) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAdmin.auth.getUser(token);
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userId = user.id;
+
+  // 2️⃣ Öz employee recordunu tap (çox vacib!)
+  const { data: myEmployeeRow } = await supabaseAdmin
     .from("employees")
-  .select(`
-  id,
-  user_id,
-  email,
-  ad,
-  soyad,
-  ata_adi,
-  elaqe_nomresi,
-  created_at,
-  company_id,
-  department_id,
-  position_id,
-  role_id,
+    .select("id, role_id")
+    .eq("user_id", userId)
+    .single();
 
-  companies:companies!fk_employees_company(id,name),
-  departments:departments!fk_employees_department(id,name,company_id),
-  positions:positions!fk_employees_position(id,name),
-  roles:roles!fk_employees_role(id,name),
+  if (!myEmployeeRow) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
+  }
 
-  employee_guides!employee_guides_employee_id_fkey(
-    guide_id,
-    guides:employees!employee_guides_guide_id_fkey(
+  const myEmployeeId = myEmployeeRow.id;
+  const roleId = myEmployeeRow.role_id;
+
+  // 3️⃣ Role adı tap
+  const { data: roleData } = await supabaseAdmin
+    .from("roles")
+    .select("name")
+    .eq("id", roleId)
+    .single();
+
+  const roleName = roleData?.name;
+  const isAdmin = roleName === "ADMIN";
+  const isRehber = roleName === "REHBER";
+
+  // 4️⃣ Company access hesabla
+  let allowedCompanies: number[] = [];
+
+  if (!isAdmin) {
+    const { data: roleCompanies } = await supabaseAdmin
+      .from("role_company_access")
+      .select("company_id")
+      .eq("role_id", roleId);
+
+    allowedCompanies =
+      roleCompanies?.map((c: any) => c.company_id) || [];
+
+    const { data: userCompanies } = await supabaseAdmin
+      .from("user_company_access")
+      .select("company_id,allowed")
+      .eq("user_id", userId);
+
+    userCompanies?.forEach((c: any) => {
+      if (c.allowed === true) {
+        if (!allowedCompanies.includes(c.company_id)) {
+          allowedCompanies.push(c.company_id);
+        }
+      } else {
+        allowedCompanies = allowedCompanies.filter(
+          (id) => id !== c.company_id
+        );
+      }
+    });
+  }
+
+  // 5️⃣ REHBER üçün tabeliyində olan userləri tap
+  let myEmployeeIds: string[] = [];
+
+  if (isRehber) {
+    const { data: myEmployees } = await supabaseAdmin
+      .from("employee_guides")
+      .select("employee_id")
+      .eq("guide_id", myEmployeeId); // 🔥 DÜZGÜN ID
+
+    myEmployeeIds =
+      myEmployees?.map((x: any) => x.employee_id) || [];
+  }
+
+  // 6️⃣ MAIN QUERY
+  let query = supabaseAdmin
+    .from("employees")
+    .select(`
       id,
+      user_id,
+      email,
       ad,
-      soyad
-    )
-  )
-`)
+      soyad,
+      ata_adi,
+      elaqe_nomresi,
+      created_at,
+      company_id,
+      department_id,
+      position_id,
+      role_id,
+
+      companies:companies!fk_employees_company(id,name),
+      departments:departments!fk_employees_department(id,name,company_id),
+      positions:positions!fk_employees_position(id,name),
+      roles:roles!fk_employees_role(id,name),
+
+      employee_guides!employee_guides_employee_id_fkey(
+        guide_id,
+        guides:employees!employee_guides_guide_id_fkey(
+          id,
+          ad,
+          soyad
+        )
+      )
+    `)
     .order("created_at", { ascending: false });
 
-  if (error) return jsonError(error.message, 400);
+  if (!isAdmin) {
+    // NORMAL ROLE
+    if (!isRehber) {
+      if (allowedCompanies.length === 0) {
+        return NextResponse.json({ employees: [] });
+      }
+
+      query = query.in("company_id", allowedCompanies);
+    }
+    // REHBER ROLE
+    else {
+      const filters: string[] = [];
+
+      if (allowedCompanies.length > 0) {
+        filters.push(`company_id.in.(${allowedCompanies.join(",")})`);
+      }
+
+      if (myEmployeeIds.length > 0) {
+        filters.push(`id.in.(${myEmployeeIds.join(",")})`);
+      }
+
+      if (filters.length === 0) {
+        return NextResponse.json({ employees: [] });
+      }
+
+      query = query.or(filters.join(","));
+    }
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
   return NextResponse.json({
     employees: data ?? [],

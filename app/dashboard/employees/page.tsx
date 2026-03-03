@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { supabase } from "@/lib/supabaseClient";
 
 type GuideRelation = {
   guide_id: string;
@@ -47,18 +48,18 @@ const COLUMN_LABELS: Record<string, string> = {
   company_name: "Şirkət",
   role_name: "Rol",
   guides: "Rəhbər(lər)",   // ✅ əlavə et
-  created_at: "Yaradılma",
+  // created_at: "Yaradılma",
 };
 
 const MAIN_COLUMNS: Array<
-  { key: "full_name" | "email" | "company_name" | "role_name" | "guides" | "created_at"; sortable?: boolean }
+  { key: "full_name" | "email" | "company_name" | "role_name" | "guides"; sortable?: boolean }
 > = [
     { key: "full_name", sortable: true },
     { key: "email", sortable: true },
     { key: "company_name", sortable: true },
     { key: "role_name", sortable: true },
     { key: "guides" },
-    { key: "created_at", sortable: true },
+    // { key: "created_at", sortable: true },
   ];
 
 function formatDMY(date?: string | null, withTime = false) {
@@ -134,27 +135,50 @@ export default function EmployeesAdminPage() {
     setLoading(true);
     setToast(null);
 
-    try {
-      const res = await fetch("/api/admin/employees", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Yükləmə xətası");
-      setItems(data.employees || []);
+   try {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-      const metaRes = await fetch("/api/employees/meta", { cache: "no-store" });
-      const metaData = await metaRes.json();
+  if (!session?.access_token) {
+    throw new Error("Session tapılmadı");
+  }
 
-      setMeta({
-        companies: metaData.companies || [],
-        departments: metaData.departments || [],
-        positions: metaData.positions || [],
-        roles: metaData.roles || [],
-        guides: metaData.guides || [],
-      });
-    } catch (e: any) {
-      showToast("err", e?.message || "Server xətası");
-    } finally {
-      setLoading(false);
-    }
+  // EMPLOYEES
+  const res = await fetch("/api/admin/employees", {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || "Yükləmə xətası");
+
+  setItems(data.employees || []);
+
+  // META
+  const metaRes = await fetch("/api/employees/meta", {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  const metaData = await metaRes.json();
+
+  setMeta({
+    companies: metaData.companies || [],
+    departments: metaData.departments || [],
+    positions: metaData.positions || [],
+    roles: metaData.roles || [],
+    guides: metaData.guides || [],
+  });
+} catch (e: any) {
+  showToast("err", e?.message || "Server xətası");
+} finally {
+  setLoading(false);
+}
   };
 
   useEffect(() => {
@@ -474,7 +498,7 @@ export default function EmployeesAdminPage() {
                   <option value="email">Email</option>
                   <option value="company_name">Şirkət</option>
                   <option value="role_name">Rol</option>
-                  <option value="created_at">Yaradılma</option>
+                  {/* <option value="created_at">Yaradılma</option> */}
                 </select>
 
                 <button
@@ -557,9 +581,9 @@ export default function EmployeesAdminPage() {
                       {sortBy === c.key ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                   ))}
-                  <th className="p-3 text-left font-black text-slate-700 border-b w-[220px]">
+                  {/* <th className="p-3 text-left font-black text-slate-700 border-b w-[220px]">
                     Əməliyyat
-                  </th>
+                  </th> */}
                 </tr>
               </thead>
 
@@ -593,7 +617,7 @@ export default function EmployeesAdminPage() {
                         "-"
                       )}
                     </td>
-                    <td className="p-3 text-slate-800">{formatDMY(e.created_at, true)}</td>
+                    {/* <td className="p-3 text-slate-800">{formatDMY(e.created_at, true)}</td> */}
 
                     <td className="p-3">
                       <div className="flex gap-2">
