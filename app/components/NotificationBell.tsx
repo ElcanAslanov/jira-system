@@ -19,7 +19,6 @@ export default function NotificationBell() {
     const authId = data.session?.user?.id;
     if (!authId) return;
 
-    // auth → employee mapping
     const { data: emp } = await supabase
       .from("employees")
       .select("id")
@@ -31,7 +30,6 @@ export default function NotificationBell() {
     setEmployeeId(emp.id);
     fetchNotifications(emp.id);
     listenRealtime(emp.id);
-    console.log("EMPLOYEE ID:", emp.id);
   }
 
   async function fetchNotifications(empId: string) {
@@ -81,57 +79,103 @@ export default function NotificationBell() {
   }
 
   return (
-    <div style={{ position: "relative" }}>
-      <button onClick={() => setOpen(!open)}>
-        🔔 {unread > 0 && <span>({unread})</span>}
+    <div className="relative">
+
+      {/* 🔔 BUTTON */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="relative p-2 rounded-xl bg-white shadow hover:shadow-md transition"
+      >
+        <span className="text-xl">🔔</span>
+
+        {unread > 0 && (
+          <span
+            className="
+              absolute
+              -top-1.5
+              -right-1.5
+              min-w-[20px]
+              h-[20px]
+              flex
+              items-center
+              justify-center
+              text-[11px]
+              font-bold
+              rounded-full
+              bg-gradient-to-r from-red-500 to-rose-600
+              text-white
+              shadow-lg
+              ring-2
+              ring-white
+            "
+          >
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
       </button>
 
+      {/* DROPDOWN */}
       {open && (
         <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: 40,
-            width: 300,
-            background: "#fff",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: 10,
-            maxHeight: 400,
-            overflowY: "auto",
-          }}
+          className="
+            absolute
+            right-0
+            mt-3
+            w-[340px]
+            bg-white
+            border
+            rounded-2xl
+            shadow-2xl
+            z-50
+            overflow-hidden
+            animate-fadeIn
+          "
         >
-          {items.length === 0 && <div>Bildirim yoxdur</div>}
+          <div className="px-4 py-3 border-b font-semibold text-gray-700 flex justify-between">
+            <span>Bildirişlər</span>
+            <span className="text-xs text-gray-400">
+              {unread} unread
+            </span>
+          </div>
 
-          {items.map((n) => (
-            <div
-              key={n.id}
-              style={{
-                padding: 8,
-                marginBottom: 6,
-                background: n.is_read ? "#f9f9f9" : "#e6f4ff",
-                borderRadius: 6,
-                cursor: "pointer",
-              }}
-              onClick={() => markAsRead(n.id)}
-            >
-              <div style={{ fontWeight: 600 }}>
-                {n.title}
-              </div>
-              <div style={{ fontSize: 12 }}>
-                {n.body}
-              </div>
+          <div className="max-h-[400px] overflow-y-auto">
 
-              {n.task_id && (
-              <Link
-  href={`/dashboard/tasks?open=${n.task_id}`}
-  style={{ fontSize: 12, color: "blue" }}
->
-  Task-a keç →
-</Link>
-              )}
-            </div>
-          ))}
+            {items.length === 0 && (
+              <div className="p-6 text-center text-gray-400">
+                Bildiriş yoxdur
+              </div>
+            )}
+
+            {items.map((n) => (
+              <div
+                key={n.id}
+                onClick={() => markAsRead(n.id)}
+                className={`
+                  px-4 py-3 border-b last:border-none cursor-pointer transition
+                  ${n.is_read
+                    ? "bg-white hover:bg-gray-50"
+                    : "bg-indigo-50 hover:bg-indigo-100"}
+                `}
+              >
+                <div className="font-semibold text-sm text-gray-800">
+                  {n.title}
+                </div>
+
+                <div className="text-xs text-gray-600 mt-1">
+                  {n.body}
+                </div>
+
+                {n.task_id && (
+                  <Link
+                    href={`/dashboard/tasks?open=${n.task_id}`}
+                    className="text-xs text-indigo-600 font-medium mt-2 inline-block hover:underline"
+                  >
+                    Task-a keç →
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

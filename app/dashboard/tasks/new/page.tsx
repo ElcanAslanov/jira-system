@@ -20,6 +20,8 @@ type Employee = {
 };
 
 export default function CreateTaskPage() {
+
+  const [commentsEnabled, setCommentsEnabled] = useState(true);
   const router = useRouter();
   const { user, loading } = useUser();
 
@@ -150,6 +152,8 @@ export default function CreateTaskPage() {
     assignedTo.forEach((id) =>
       formData.append("assigned_to[]", id)
     );
+
+    formData.append("comments_enabled", String(commentsEnabled));
 
     files.forEach((file) =>
       formData.append("files", file)
@@ -304,6 +308,23 @@ export default function CreateTaskPage() {
             </div>
           )}
         </div>
+
+        {/* COMMENT TOGGLE */}
+<div className="flex items-center gap-3">
+  <input
+    type="checkbox"
+    id="commentsEnabled"
+    checked={commentsEnabled}
+    onChange={(e) => setCommentsEnabled(e.target.checked)}
+    className="w-4 h-4"
+  />
+  <label
+    htmlFor="commentsEnabled"
+    className="text-sm font-medium text-gray-700 cursor-pointer"
+  >
+    Şərhlərə icazə ver
+  </label>
+</div>
 
         {/* FILE ATTACH */}
         <div>

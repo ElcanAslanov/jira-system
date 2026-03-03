@@ -96,6 +96,7 @@ export async function GET(req: Request) {
   priority,
   start_date,
   due_date,
+  comments_enabled,
   sort_index,
   created_at,
   updated_at,
@@ -272,60 +273,70 @@ export async function GET(req: Request) {
 
     /* ===== FILES ===== */
 
-    const { data: files } =
-      await supabaseAdmin
-        .from("task_files")
-        .select(`
-          task_id,
-          original_name,
-          path,
-          size_bytes
-        `)
-        .in("task_id", taskIds);
+    /* ===== FILES (FROM PRIVATE STORAGE BUCKET) ===== */
 
-    const finalTasks = tasks.map((task) => {
-      const relatedAssignees =
-        assignees?.filter((a) => a.task_id === task.id) ?? [];
+const filesMap: Record<string, any[]> = {};
 
-      const names: string[] = relatedAssignees
-        .map((r) => {
-          const emp = Array.isArray(r.employees)
-            ? r.employees[0]
-            : r.employees;
+for (const taskId of taskIds) {
+  const { data: storageFiles } =
+    await supabaseAdmin.storage
+      .from("task-files")
+      .list(taskId, {
+        limit: 100,
+        offset: 0,
+      });
 
-          if (!emp) return null;
-          return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
-        })
-        .filter(Boolean) as string[];
+  if (storageFiles?.length) {
+    filesMap[taskId] = storageFiles.map((f) => ({
+      name: f.name.split("_").slice(1).join("_") || f.name,
+      path: `${taskId}/${f.name}`,
+      size: f.metadata?.size ?? 0,
+    }));
+  } else {
+    filesMap[taskId] = [];
+  }
+}
 
-      const relatedFiles =
-        files?.filter((f) => f.task_id === task.id) ?? [];
+const finalTasks = tasks.map((task) => {
+  const relatedAssignees =
+    assignees?.filter((a) => a.task_id === task.id) ?? [];
 
-      // 🔥 COMMENT COUNT HESABLAYIRIQ
-      const commentCount = unreadMap[task.id] ?? 0;
+  const names: string[] = relatedAssignees
+    .map((r) => {
+      const emp = Array.isArray(r.employees)
+        ? r.employees[0]
+        : r.employees;
 
-      const creator = Array.isArray(task.creator)
-        ? task.creator[0]
-        : task.creator;
+      if (!emp) return null;
+      return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
+    })
+    .filter(Boolean) as string[];
 
-      const creatorName = creator
-        ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
-        : null;
+  // 🔥 STORAGE-DAN GƏLƏN FILES
+  const relatedFiles = filesMap[task.id] ?? [];
 
-      return {
-        ...task,
-        creator_name: creatorName, // 🔥 YENİ FIELD
-        comment_count: commentCount,
-        assigned_to: names,
-        files: relatedFiles.map((f) => ({
-          name: f.original_name,
-          path: f.path,
-          size: f.size_bytes,
-        })),
-      };
-    });
+  // 🔥 COMMENT COUNT
+  const commentCount = unreadMap[task.id] ?? 0;
 
-    return NextResponse.json({ tasks: finalTasks });
+  const creator = Array.isArray(task.creator)
+    ? task.creator[0]
+    : task.creator;
+
+  const creatorName = creator
+    ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
+    : null;
+
+  return {
+    ...task,
+    allow_comments: task.comments_enabled, // 👈 ƏLAVƏ ET
+    creator_name: creatorName,
+    comment_count: commentCount,
+    assigned_to: names,
+    files: relatedFiles,
+  };
+});
+
+return NextResponse.json({ tasks: finalTasks });
 
   } catch (e: any) {
     console.error("TASKS GET ERROR:", e);
@@ -360,6 +371,9 @@ export async function POST(req: Request) {
         assignedIds.push(value.toString());
       }
     });
+
+    const comments_enabled =
+  formData.get("comments_enabled") !== "false";
     const files = formData.getAll("files") as File[];
 
     if (!title) throw new Error("Title required");
@@ -376,6 +390,7 @@ export async function POST(req: Request) {
           priority,
           start_date,
           due_date,
+          comments_enabled,
           created_by: user.id,
           status: "TODO",
           sort_index: Date.now(),

@@ -57,6 +57,7 @@ type Task = {
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT" | string;
   start_date?: string | null;   // ✅ BURANI ƏLAVƏ ET
   due_date?: string | null;
+  allow_comments?: boolean;
   sort_index: number;
   assigned_to?: string[] | null;
   created_by?: string | null;
@@ -265,6 +266,33 @@ type UserInfo = {
 
 
 export default function TasksPage() {
+
+  const downloadFile = async (bucket: string, path: string, fileName?: string) => {
+    if (!path) return;
+
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 60);
+
+      if (error || !data?.signedUrl) {
+        console.error("Signed URL error:", error);
+        return;
+      }
+
+      const link = document.createElement("a");
+      link.href = data.signedUrl;
+      link.setAttribute("download", fileName || "file");
+      link.style.display = "none";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (err) {
+      console.error("Download error:", err);
+    }
+  };
 
   const searchParams = useSearchParams();
   const openTaskId = searchParams.get("open");
@@ -500,6 +528,7 @@ export default function TasksPage() {
       files: Array.isArray(t.files) ? t.files : [],
       comment_count: t.comment_count ?? 0,
       creator_name: t.creator_name ?? null, // 🔥 BUNU ƏLAVƏ ET
+      allow_comments: t.allow_comments ?? true,
     }));
 
 
@@ -1215,6 +1244,9 @@ export default function TasksPage() {
                     <th onClick={() => toggleSort("assigned_to")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
                       Assigned
                     </th>
+                    <th className="p-3 text-left">
+                      Files
+                    </th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -1239,6 +1271,66 @@ export default function TasksPage() {
                           <div className="flex flex-wrap gap-1">
                             {t.assigned_to.map((u, i) => (
                               <UserBadge key={i} userId={u} users={users} />
+                            ))}
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {t.files?.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {t.files.map((file, i) => (
+                              <span
+                                key={i}
+                                onClick={async (e) => {
+                                  e.stopPropagation(); // row click bloklamasın
+
+                                  if (!file?.path) return;
+
+                                  try {
+                                    const { data, error } = await supabase.storage
+                                      .from("task-files")
+                                      .createSignedUrl(file.path, 60);
+
+                                    if (error || !data?.signedUrl) {
+                                      console.error("Signed URL error:", error);
+                                      return;
+                                    }
+
+                                    // ✅ Pure download (no preview, no new tab)
+                                    const link = document.createElement("a");
+                                    link.href = data.signedUrl;
+                                    link.setAttribute("download", file.name || "file");
+                                    link.style.display = "none";
+
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+
+                                  } catch (err) {
+                                    console.error("Download error:", err);
+                                  }
+                                }}
+                                className="
+  inline-flex
+  items-center
+  px-2.5
+  py-1
+  rounded-full
+  text-xs
+  font-medium
+  bg-indigo-50
+  text-indigo-700
+  border
+  border-indigo-200
+  hover:bg-indigo-100
+  cursor-pointer
+  transition
+"
+                              >
+                                📎 {file.name}
+                              </span>
                             ))}
                           </div>
                         ) : (
@@ -1309,7 +1401,7 @@ export default function TasksPage() {
 
                   {paginatedTasks.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-6 text-center text-gray-500">
+                      <td colSpan={8} className="p-6 text-center text-gray-500">
                         No tasks found.
                       </td>
                     </tr>
@@ -1798,6 +1890,8 @@ export default function TasksPage() {
                 value={formatDMY(viewTask.updated_at, true)}
               />
 
+
+
               {viewTask.files?.length ? (
                 <DrawerRow
                   label="Fayllar"
@@ -1806,19 +1900,25 @@ export default function TasksPage() {
                       {viewTask.files.map((f, i) => (
                         <button
                           key={i}
-                          onClick={async () => {
-                            const { data } = await supabase.storage
-                              .from("task-files")
-                              .createSignedUrl(f.path, 60);
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!f?.path) return;
 
-                            if (data?.signedUrl) {
-                              const a = document.createElement("a");
-                              a.href = data.signedUrl;
-                              a.target = "_blank";
-                              a.rel = "noopener noreferrer";
-                              document.body.appendChild(a);
-                              a.click();
-                              a.remove();
+                            try {
+                              const { data, error } = await supabase.storage
+                                .from("task-files")
+                                .createSignedUrl(f.path, 60);
+
+                              if (error || !data?.signedUrl) {
+                                console.error("Signed URL error:", error);
+                                return;
+                              }
+
+                              // 🔥 SAFEST & UNLIMITED DOWNLOAD
+                              window.location.href = data.signedUrl;
+
+                            } catch (err) {
+                              console.error("Download error:", err);
                             }
                           }}
                           style={{
@@ -1839,6 +1939,7 @@ export default function TasksPage() {
               ) : null}
 
               {/* COMMENTS SECTION */}
+              {viewTask.allow_comments !== false && (
               <div style={{ marginTop: 30 }}>
                 <h3 style={{ fontWeight: 900, marginBottom: 10 }}>
                   💬 Şərhlər
@@ -1913,17 +2014,16 @@ export default function TasksPage() {
                                     onClick={async () => {
                                       if (!f?.path) return;
 
-                                      const { data, error } =
-                                        await supabase.storage
-                                          .from("task-comment-files")
-                                          .createSignedUrl(f.path, 60);
+                                      const { data, error } = await supabase.storage
+                                        .from("task-comment-files")
+                                        .createSignedUrl(f.path, 60);
 
                                       if (error || !data?.signedUrl) {
                                         console.error("Signed URL error:", error);
                                         return;
                                       }
 
-                                      window.open(data.signedUrl, "_blank");
+                                      window.location.href = data.signedUrl;
                                     }}
                                     className="flex items-center gap-2 bg-white border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all px-3 py-2 rounded-xl cursor-pointer text-sm"
                                   >
@@ -2035,7 +2135,7 @@ export default function TasksPage() {
                   </button>
                 </div>
               </div>
-
+              )}
             </div>
 
           </div>
@@ -2069,6 +2169,7 @@ export default function TasksPage() {
               priority: (payload.priority as any) ?? "MEDIUM",
               start_date: payload.start_date ?? null,   // ✅ DÜZGÜN
               due_date: payload.due_date ?? null,
+              allow_comments: true,
               sort_index: Date.now(),
               assigned_to: payload.assigned_to ?? null,
               created_by: user.id,
@@ -2365,26 +2466,29 @@ const TaskCard = React.memo(function TaskCard({
         {task.files?.length ? (
           <div className="mt-2 text-xs">
             <button
-              onClick={async () => {
+              onClick={async (e) => {
+                e.stopPropagation();
+
+                if (!task.files?.length) return;
+
                 try {
-                  for (const file of task.files ?? []) {
+                  for (const file of task.files) {
                     if (!file?.path) continue;
 
                     const { data, error } = await supabase.storage
                       .from("task-files")
                       .createSignedUrl(file.path, 60);
 
-                    if (error || !data?.signedUrl) continue;
+                    if (error || !data?.signedUrl) {
+                      console.error("Signed URL error:", error);
+                      continue;
+                    }
 
-                    // 🚀 Production optimized (no blob, no extra fetch)
-                    const a = document.createElement("a");
-                    a.href = data.signedUrl;
-                    a.download = file.name || "file";
-                    a.target = "_blank";
-                    a.rel = "noopener noreferrer";
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
+                    // 🔥 Pure download (no open, no popup)
+                    window.location.assign(data.signedUrl);
+
+                    // Kiçik delay — browser bloklamasın deyə
+                    await new Promise((res) => setTimeout(res, 300));
                   }
                 } catch (err) {
                   console.error("File download error:", err);
