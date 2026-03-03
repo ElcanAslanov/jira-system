@@ -2,215 +2,138 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 export default function NotificationBell() {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
 
-  // 🔹 Notifications yüklə
-  const load = async () => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-    if (!token) return;
-
-    const res = await fetch("/api/notifications", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!res.ok) return;
-
-    const data = await res.json();
-    setNotifications(data.notifications || []);
-  };
-
   useEffect(() => {
-    let channel: any;
-
-    const init = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      await load();
-
-      channel = supabase
-        .channel("notifications-channel")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            setNotifications((prev) => [payload.new, ...prev]);
-          }
-        )
-        .subscribe();
-    };
-
     init();
-
-    return () => {
-      if (channel) supabase.removeChannel(channel);
-    };
   }, []);
 
-  const markRead = async (id: string) => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-    if (!token) return;
+  async function init() {
+    const { data } = await supabase.auth.getSession();
+    const authId = data.session?.user?.id;
+    if (!authId) return;
 
-    const res = await fetch(`/api/notifications/${id}/read`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    // auth → employee mapping
+    const { data: emp } = await supabase
+      .from("employees")
+      .select("id")
+      .eq("user_id", authId)
+      .single();
 
-    if (!res.ok) return;
+    if (!emp) return;
 
-    setNotifications((prev) =>
+    setEmployeeId(emp.id);
+    fetchNotifications(emp.id);
+    listenRealtime(emp.id);
+    console.log("EMPLOYEE ID:", emp.id);
+  }
+
+  async function fetchNotifications(empId: string) {
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", empId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    setItems(data || []);
+    setUnread((data || []).filter((n) => !n.is_read).length);
+  }
+
+  function listenRealtime(empId: string) {
+    supabase
+      .channel("notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${empId}`,
+        },
+        (payload) => {
+          setItems((prev) => [payload.new, ...prev]);
+          setUnread((prev) => prev + 1);
+        }
+      )
+      .subscribe();
+  }
+
+  async function markAsRead(id: string) {
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", id);
+
+    setItems((prev) =>
       prev.map((n) =>
         n.id === id ? { ...n, is_read: true } : n
       )
     );
-  };
 
-  const unreadCount = notifications.filter(
-    (n) => !n.is_read
-  ).length;
+    setUnread((prev) => Math.max(0, prev - 1));
+  }
 
   return (
-    <>
-      {/* Bell Button */}
-      <div className="relative z-[9999]">
-        <button
-          onClick={() => setOpen(!open)}
-          className="relative text-xl"
-        >
-          🔔
-          {unreadCount > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 rounded-full">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-      </div>
+    <div style={{ position: "relative" }}>
+      <button onClick={() => setOpen(!open)}>
+        🔔 {unread > 0 && <span>({unread})</span>}
+      </button>
 
-      {/* Overlay */}
       {open && (
         <div
-          onClick={() => setOpen(false)}
-          className="fixed inset-0 bg-black/30 z-[9998]"
-        />
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 40,
+            width: 300,
+            background: "#fff",
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            padding: 10,
+            maxHeight: 400,
+            overflowY: "auto",
+          }}
+        >
+          {items.length === 0 && <div>Bildirim yoxdur</div>}
+
+          {items.map((n) => (
+            <div
+              key={n.id}
+              style={{
+                padding: 8,
+                marginBottom: 6,
+                background: n.is_read ? "#f9f9f9" : "#e6f4ff",
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+              onClick={() => markAsRead(n.id)}
+            >
+              <div style={{ fontWeight: 600 }}>
+                {n.title}
+              </div>
+              <div style={{ fontSize: 12 }}>
+                {n.body}
+              </div>
+
+              {n.task_id && (
+              <Link
+  href={`/dashboard/tasks?open=${n.task_id}`}
+  style={{ fontSize: 12, color: "blue" }}
+>
+  Task-a keç →
+</Link>
+              )}
+            </div>
+          ))}
+        </div>
       )}
-
-      {/* Desktop Dropdown */}
-      <div
-        className={`
-          hidden md:block
-          fixed
-          top-16
-          right-6
-          w-96
-          bg-white
-          shadow-2xl
-          rounded-xl
-          p-4
-          z-[9999]
-          transition-all duration-200
-          ${open ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none"}
-        `}
-      >
-        <h3 className="font-semibold mb-3 text-lg">
-          Notifications
-        </h3>
-
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {notifications.length === 0 && (
-            <div className="text-sm text-gray-400">
-              No notifications
-            </div>
-          )}
-
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => markRead(n.id)}
-              className={`p-3 rounded-lg cursor-pointer transition hover:shadow ${
-                n.is_read
-                  ? "bg-gray-100"
-                  : "bg-blue-100"
-              }`}
-            >
-              <div className="text-sm font-medium">
-                {n.title}
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {n.body}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Mobile Slide Panel */}
-      <div
-        className={`
-          md:hidden
-          fixed
-          inset-y-0
-          right-0
-          w-full
-          max-w-sm
-          bg-white
-          shadow-2xl
-          p-4
-          z-[9999]
-          transform transition-transform duration-300
-          ${open ? "translate-x-0" : "translate-x-full"}
-        `}
-      >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold text-lg">
-            Notifications
-          </h3>
-          <button onClick={() => setOpen(false)}>✕</button>
-        </div>
-
-        <div className="space-y-2 overflow-y-auto">
-          {notifications.length === 0 && (
-            <div className="text-sm text-gray-400">
-              No notifications
-            </div>
-          )}
-
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => markRead(n.id)}
-              className={`p-3 rounded-lg cursor-pointer ${
-                n.is_read
-                  ? "bg-gray-100"
-                  : "bg-blue-100"
-              }`}
-            >
-              <div className="text-sm font-medium">
-                {n.title}
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {n.body}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    </div>
   );
 }

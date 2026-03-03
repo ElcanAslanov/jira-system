@@ -21,33 +21,34 @@ function safeStr(v: unknown) {
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from("employees")
-    .select(`
-      id,
-      user_id,
-      email,
-      ad,
-      soyad,
-      ata_adi,
-      elaqe_nomresi,
-      created_at,
-      company_id,
-      department_id,
-      position_id,
-      role_id,
-      companies(id,name),
-      departments(id,name,company_id),
-      positions(id,name),
-      roles(id,name),
+  .select(`
+  id,
+  user_id,
+  email,
+  ad,
+  soyad,
+  ata_adi,
+  elaqe_nomresi,
+  created_at,
+  company_id,
+  department_id,
+  position_id,
+  role_id,
 
-      employee_guides!employee_guides_employee_id_fkey(
-        guide_id,
-        guides:employees!employee_guides_guide_id_fkey(
-          id,
-          ad,
-          soyad
-        )
-      )
-    `)
+  companies:companies!fk_employees_company(id,name),
+  departments:departments!fk_employees_department(id,name,company_id),
+  positions:positions!fk_employees_position(id,name),
+  roles:roles!fk_employees_role(id,name),
+
+  employee_guides!employee_guides_employee_id_fkey(
+    guide_id,
+    guides:employees!employee_guides_guide_id_fkey(
+      id,
+      ad,
+      soyad
+    )
+  )
+`)
     .order("created_at", { ascending: false });
 
   if (error) return jsonError(error.message, 400);

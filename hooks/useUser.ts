@@ -21,16 +21,22 @@ export function useUser() {
 
       const authUser = session.user;
 
-      // 🔥 EMPLOYEE TABLE-DƏN ROLE GÖTÜRÜRÜK
+      // ✅ ROLE_ID + ROLE NAME JOIN
       const { data: employee } = await supabase
         .from("employees")
-        .select("role")
+        .select(`
+          role_id,
+          roles (
+            name
+          )
+        `)
         .eq("user_id", authUser.id)
         .single();
 
       setUser({
         ...authUser,
-        role: employee?.role || null,
+        role_id: employee?.role_id || null,
+        role: employee?.roles?.[0]?.name || null,
       });
 
       setLoading(false);
@@ -49,13 +55,19 @@ export function useUser() {
 
         const { data: employee } = await supabase
           .from("employees")
-          .select("role")
+          .select(`
+            role_id,
+            roles (
+              name
+            )
+          `)
           .eq("user_id", authUser.id)
           .single();
 
         setUser({
           ...authUser,
-          role: employee?.role || null,
+          role_id: employee?.role_id || null,
+          role: employee?.roles?.[0]?.name || null,
         });
       }
     );

@@ -23,11 +23,19 @@ import { CSS } from "@dnd-kit/utilities";
 import { supabase } from "@/lib/supabaseClient";
 import { useUser } from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
-import { DatePicker } from "antd";
+
+import DatePicker from "antd/es/date-picker";
+import Select from "antd/es/select";
 import dayjs from "dayjs";
-import { Select } from "antd";
 import { message } from "antd";
+import { useEditor, EditorContent } from "@tiptap/react"
+import StarterKit from "@tiptap/starter-kit"
+import Link from "@tiptap/extension-link"
+import { useSearchParams } from "next/navigation";
+import Calendar from "antd/es/calendar";
+
+
+
 
 const { RangePicker } = DatePicker;
 
@@ -49,11 +57,12 @@ type Task = {
   start_date?: string | null;   // ✅ BURANI ƏLAVƏ ET
   due_date?: string | null;
   sort_index: number;
-  assigned_to?: string | null;
+  assigned_to?: string[] | null;
   created_by?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   files?: TaskFile[]; // 🔥 əlavə olundu
+  comment_count?: number; // 🔥 BUNU ƏLAVƏ ET
 };
 
 type TasksByStatus = Record<Status, Task[]>;
@@ -151,10 +160,26 @@ function PriorityPill({ p }: { p: string }) {
 
 export default function TasksPage() {
 
+  const searchParams = useSearchParams();
+  const openTaskId = searchParams.get("open");
+const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
-    // COMMENTS STATE
+  // COMMENTS STATE
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+    ],
+    immediatelyRender: false,
+    onUpdate({ editor }) {
+      setNewComment(editor.getHTML())
+    },
+  })
+
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
@@ -176,7 +201,7 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const [q, setQ] = useState("");
-
+  const [searchInput, setSearchInput] = useState("");
   const [statusFilter, setStatusFilter] = useState<Status[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [assignedFilter, setAssignedFilter] = useState<string[]>([]);
@@ -192,45 +217,50 @@ export default function TasksPage() {
       CANCELLED: [],
     };
 
- for (const st of STATUSES) {
-  out[st] = tasksBy[st].filter((t) => {
+    for (const st of STATUSES) {
+      out[st] = tasksBy[st].filter((t) => {
 
-    // 🔍 search
-    if (q.trim()) {
-      const needle = q.toLowerCase();
-      if (
-        !(t.title ?? "").toLowerCase().includes(needle) &&
-        !(t.description ?? "").toLowerCase().includes(needle)
-      ) return false;
+        // 🔍 search
+        if (q.trim()) {
+          const needle = q.toLowerCase();
+          if (
+            !(t.title ?? "").toLowerCase().includes(needle) &&
+            !(t.description ?? "").toLowerCase().includes(needle)
+          ) return false;
+        }
+
+        // STATUS
+        if (statusFilter.length && !statusFilter.includes(t.status as Status)) {
+          return false;
+        }
+
+        // PRIORITY
+        if (priorityFilter.length && !priorityFilter.includes(t.priority)) {
+          return false;
+        }
+
+        // ASSIGNED
+        if (
+          assignedFilter.length &&
+          !assignedFilter.some(name =>
+            (t.assigned_to ?? []).includes(name)
+          )
+        ) {
+          return false;
+        }
+
+        const [startFrom, startTo] = startRange;
+        const [dueFrom, dueTo] = dueRange;
+
+        if (startFrom && (!t.start_date || t.start_date < startFrom)) return false;
+        if (startTo && (!t.start_date || t.start_date > startTo)) return false;
+
+        if (dueFrom && (!t.due_date || t.due_date < dueFrom)) return false;
+        if (dueTo && (!t.due_date || t.due_date > dueTo)) return false;
+
+        return true;
+      });
     }
-
-    // STATUS
-    if (statusFilter.length && !statusFilter.includes(t.status as Status)) {
-      return false;
-    }
-
-    // PRIORITY
-    if (priorityFilter.length && !priorityFilter.includes(t.priority)) {
-      return false;
-    }
-
-    // ASSIGNED
-    if (assignedFilter.length && !assignedFilter.includes(t.assigned_to ?? "")) {
-      return false;
-    }
-
-    const [startFrom, startTo] = startRange;
-    const [dueFrom, dueTo] = dueRange;
-
-    if (startFrom && (!t.start_date || t.start_date < startFrom)) return false;
-    if (startTo && (!t.start_date || t.start_date > startTo)) return false;
-
-    if (dueFrom && (!t.due_date || t.due_date < dueFrom)) return false;
-    if (dueTo && (!t.due_date || t.due_date > dueTo)) return false;
-
-    return true;
-  });
-}
 
     return out;
   }, [
@@ -244,58 +274,58 @@ export default function TasksPage() {
   ]);
 
   const [sortBy, setSortBy] = useState<
-  "title" | "status" | "priority" | "start_date" | "due_date" | "assigned_to"
->("title");
+    "title" | "status" | "priority" | "start_date" | "due_date" | "assigned_to"
+  >("title");
 
-const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-function toggleSort(col: typeof sortBy) {
-  if (sortBy === col) {
-    setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-  } else {
-    setSortBy(col);
-    setSortDir("asc");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  function toggleSort(col: typeof sortBy) {
+    if (sortBy === col) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
   }
-}
   // table pagination (for ALL tasks, but filtered by search)
   const PAGE_SIZE = 6;
   const [page, setPage] = useState(1);
 
- const filteredFlat = useMemo(() => {
-  const arr: Task[] = [];
-  for (const st of STATUSES) arr.push(...filteredTasksBy[st]);
+  const filteredFlat = useMemo(() => {
+    const arr: Task[] = [];
+    for (const st of STATUSES) arr.push(...filteredTasksBy[st]);
 
-  const getVal = (t: Task) => {
-    if (sortBy === "title") return t.title ?? "";
-    if (sortBy === "status") return t.status ?? "";
-    if (sortBy === "priority") return t.priority ?? "";
-    if (sortBy === "start_date") return t.start_date ?? "";
-    if (sortBy === "due_date") return t.due_date ?? "";
-    if (sortBy === "assigned_to") return t.assigned_to ?? "";
-    return "";
-  };
+    const getVal = (t: Task) => {
+      if (sortBy === "title") return t.title ?? "";
+      if (sortBy === "status") return t.status ?? "";
+      if (sortBy === "priority") return t.priority ?? "";
+      if (sortBy === "start_date") return t.start_date ?? "";
+      if (sortBy === "due_date") return t.due_date ?? "";
+      if (sortBy === "assigned_to")
+        return (t.assigned_to ?? []).join(", ");
+    };
 
-  arr.sort((a, b) => {
-    const A = getVal(a);
-    const B = getVal(b);
+    arr.sort((a, b) => {
+      const A = getVal(a);
+      const B = getVal(b);
 
-    // DATE SORT
-    if (sortBy === "start_date" || sortBy === "due_date") {
-      const tA = A ? new Date(A).getTime() : 0;
-      const tB = B ? new Date(B).getTime() : 0;
-      return sortDir === "asc" ? tA - tB : tB - tA;
-    }
+      // DATE SORT
+      if (sortBy === "start_date" || sortBy === "due_date") {
+        const tA = A ? new Date(A).getTime() : 0;
+        const tB = B ? new Date(B).getTime() : 0;
+        return sortDir === "asc" ? tA - tB : tB - tA;
+      }
 
-    // STRING SORT
-    const sA = String(A).toLowerCase();
-    const sB = String(B).toLowerCase();
+      // STRING SORT
+      const sA = String(A).toLowerCase();
+      const sB = String(B).toLowerCase();
 
-    return sortDir === "asc"
-      ? sA.localeCompare(sB)
-      : sB.localeCompare(sA);
-  });
+      return sortDir === "asc"
+        ? sA.localeCompare(sB)
+        : sB.localeCompare(sA);
+    });
 
-  return arr;
-}, [filteredTasksBy, sortBy, sortDir]);
+    return arr;
+  }, [filteredTasksBy, sortBy, sortDir]);
 
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredFlat.length / PAGE_SIZE));
@@ -306,12 +336,25 @@ function toggleSort(col: typeof sortBy) {
     if (page > totalPages) setPage(totalPages);
     if (page < 1) setPage(1);
   }, [page, totalPages]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(searchInput);
+    }, 300);
+
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
 
   const paginatedTasks = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return filteredFlat.slice(start, start + PAGE_SIZE);
   }, [filteredFlat, page]);
-
+  const memoizedColumns = useMemo(() => {
+    return STATUSES.map((st) => ({
+      id: st,
+      tasks: filteredTasksBy[st],
+    }));
+  }, [filteredTasksBy]);
   // activity log (lightweight)
   const [activity, setActivity] = useState<string[]>([]);
   const pushActivity = useCallback((msg: string) => {
@@ -332,14 +375,14 @@ function toggleSort(col: typeof sortBy) {
     });
 
     if (!res.ok) {
-  const text = await res.text();
-  console.error("API ERROR:", text);
-  return;
-}
+      const text = await res.text();
+      console.error("API ERROR:", text);
+      return;
+    }
 
-const data = await res.json();
+    const data = await res.json();
 
-    console.log("API TASKS:", data.tasks); // debug üçün
+
 
     const tasks: Task[] = (data.tasks || []).map((t: any) => ({
       ...t,
@@ -348,12 +391,40 @@ const data = await res.json();
         typeof t.sort_index === "number"
           ? t.sort_index
           : Number(t.sort_index ?? 0),
-      files: Array.isArray(t.files) ? t.files : [], // 🔥 BURASI VACİBDİR
+      files: Array.isArray(t.files) ? t.files : [],
+      comment_count: t.comment_count ?? 0, // 🔥 ƏLAVƏ ET
     }));
+
 
     setRawTasks(tasks);
     setTasksBy(groupByStatus(tasks));
   }, [getToken]);
+
+  const loadUsers = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+
+    const res = await fetch("/api/admin/employees", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+
+    // ad + soyad birləşdir
+    const mapped =
+      (data.employees || []).map((u: any) => ({
+        id: u.id,
+        name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
+      })) || [];
+
+    setUsers(mapped);
+  }, [getToken]);
+
+
 
   const updateTask = useCallback(
     async (taskId: string, updates: Partial<Task>) => {
@@ -415,10 +486,10 @@ const data = await res.json();
           "x-user-role": (user as any)?.role ?? "",
         },
       });
-    if (!res.ok) {
-  const data = await res.json().catch(() => null);
-  throw new Error(data?.error || "Delete failed");
-}
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Delete failed");
+      }
     },
     [getToken, user?.id, user]
   );
@@ -426,6 +497,23 @@ const data = await res.json();
   useEffect(() => {
     if (!loading && user) loadTasks();
   }, [loading, user, loadTasks]);
+
+  useEffect(() => {
+    if (!loading && user) {
+      loadTasks();
+      loadUsers();
+    }
+  }, [loading, user, loadTasks, loadUsers]);
+
+  useEffect(() => {
+    if (openTaskId && rawTasks.length > 0) {
+      const found = rawTasks.find(t => t.id === openTaskId);
+      if (found) {
+        setViewTask(found);      // bax drawer üçün
+        setDrawerOpen(true);
+      }
+    }
+  }, [openTaskId, rawTasks]);
 
   // realtime (only when user ready)
   useEffect(() => {
@@ -443,7 +531,38 @@ const data = await res.json();
     };
   }, [user, loadTasks]);
 
-    // LOAD COMMENTS WHEN VIEW DRAWER OPENS
+  useEffect(() => {
+    const channel = supabase
+      .channel("comments-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "task_comments" },
+        (payload) => {
+          const taskId = payload.new.task_id;
+
+          setTasksBy((prev) => {
+            const next = { ...prev };
+
+            for (const st of STATUSES) {
+              next[st] = next[st].map((t) =>
+                t.id === taskId
+                  ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
+                  : t
+              );
+            }
+
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // LOAD COMMENTS WHEN VIEW DRAWER OPENS
   useEffect(() => {
     if (!viewTask) return;
 
@@ -455,71 +574,150 @@ const data = await res.json();
         headers: {
           Authorization: `Bearer ${token}`,
         },
+
+
       });
 
-   
+      // 🔥 MARK COMMENTS AS READ
+      await fetch(`/api/tasks/${viewTask.id}/comments/read`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // 🔥 BADGE RESET
+      setTasksBy((prev) => {
+        const next = { ...prev };
+
+        for (const st of STATUSES) {
+          next[st] = next[st].map((t) =>
+            t.id === viewTask.id
+              ? { ...t, comment_count: 0 }
+              : t
+          );
+        }
+
+        return next;
+      });
 
 
       if (!res.ok) {
-  console.error("COMMENT LOAD ERROR:", await res.text());
-  return;
-}
+        console.error("COMMENT LOAD ERROR:", await res.text());
+        return;
+      }
 
-const data = await res.json();
-setComments(Array.isArray(data.comments) ? data.comments : []);
+      const data = await res.json();
+      setComments(Array.isArray(data.comments) ? data.comments : []);
     };
 
     loadComments();
   }, [viewTask, getToken]);
 
 
-   const handleAddComment = async () => {
-  if (!viewTask) return;
+  const handleAddComment = async () => {
+    if (!viewTask) return;
 
-  const token = await getToken();
-  if (!token) return;
-
-  let uploaded: any[] = [];
-
-  for (const file of commentFiles) {
-    const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
-
-    const { error } = await supabase.storage
-      .from("task-comment-files")
-      .upload(fileName, file);
-
-    if (!error) {
-      uploaded.push({
-        name: file.name,
-        path: fileName,
-        size: file.size,
-      });
+    const token = await getToken();
+    if (!token) {
+      console.error("No auth token");
+      return;
     }
-  }
 
-  const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      comment: newComment.trim(),
-      files: uploaded,
-    }),
-  });
+    if (!newComment.trim() && commentFiles.length === 0) {
+      console.warn("Empty comment");
+      return;
+    }
 
-  if (!res.ok) {
-    console.error("COMMENT INSERT ERROR:", await res.text());
-    return;
-  }
+    let uploaded: {
+      name: string;
+      path: string;
+      size?: number;
+    }[] = [];
 
-  const data = await res.json();
+    try {
+      // 🔥 FILE UPLOAD
+      for (const file of commentFiles) {
+        const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
 
-  setComments((prev) => [data.comment, ...prev]);
-  setNewComment("");
-  setCommentFiles([]);
-};
+        console.log("Uploading file:", fileName);
+
+        const { error } = await supabase.storage
+          .from("task-comment-files")
+          .upload(fileName, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (error) {
+          console.error("Upload error:", error);
+          continue;
+        }
+
+        uploaded.push({
+          name: file.name,
+          path: fileName,
+          size: file.size,
+        });
+      }
+
+      console.log("Uploaded files array:", uploaded);
+
+      // 🔥 COMMENT INSERT
+      const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          comment: newComment.trim(),
+          files: uploaded,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("COMMENT INSERT ERROR:", text);
+        return;
+      }
+
+      const data = await res.json();
+
+      // 🔥 UI UPDATE
+      setComments((prev) => [
+        {
+          ...data.comment,
+          files: Array.isArray(data.comment.files)
+            ? data.comment.files
+            : [],
+        },
+        ...prev,
+      ]);
+
+      // 🔥 COMMENT COUNT INCREMENT
+      setTasksBy((prev) => {
+        const next = { ...prev };
+
+        for (const st of STATUSES) {
+          next[st] = next[st].map((t) =>
+            t.id === viewTask.id
+              ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
+              : t
+          );
+        }
+
+        return next;
+      });
+      // 🔥 RESET
+      setNewComment("");
+      setCommentFiles([]);
+      editor?.commands.clearContent();
+
+    } catch (err) {
+      console.error("Add comment failed:", err);
+    }
+  };
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -625,54 +823,77 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
   if (!user) return <div className="p-10">No user session</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-10 space-y-8">
+    <div className="min-h-screen bg-slate-50 px-4 sm:px-6 lg:px-10 pt-0 pb-6 lg:pb-10 space-y-8 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <h1 className="text-3xl font-bold">🔥 Tapşırıqlar lövhəsi</h1>
 
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search tasks..."
-              className="w-[260px] md:w-[340px] border rounded-xl px-4 py-2 bg-white shadow-sm"
-            />
-          </div>
-
+        <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
           <button
-            onClick={() => router.push("/dashboard/tasks/new")}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-sm"
+            onClick={() => setViewMode("board")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${viewMode === "board"
+                ? "bg-white shadow text-indigo-600"
+                : "text-gray-600"
+              }`}
           >
-            + New Task
+            Board
           </button>
 
-
+          <button
+            onClick={() => setViewMode("list")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${viewMode === "list"
+                ? "bg-white shadow text-indigo-600"
+                : "text-gray-600"
+              }`}
+          >
+            List
+          </button>
 
           <button
-            onClick={() => {
+  onClick={() => setViewMode("calendar")}
+  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+    viewMode === "calendar"
+      ? "bg-white shadow text-indigo-600"
+      : "text-gray-600"
+  }`}
+>
+  Calendar
+</button>
+        </div>
+
+
+
+        <div className="flex items-center gap-3">
+
+          <button
+            onClick={async () => {
               if (!filteredFlat.length) return;
 
-              const data = filteredFlat.map((t) => ({
-                "Başlıq": t.title,
-                "Təsvir": t.description ?? "",
-                "Status": t.status.replace("_", " "),
-                "Prioritet": t.priority,
-                "Başlama tarixi": formatDMY(t.start_date),   // ✅ BURANI ƏLAVƏ ET
-                "Son tarix": formatDMY(t.due_date),
-                "Təyin olunan": t.assigned_to ?? "",
-                "Fayllar": (t.files ?? []).map(f => f.name).join(", "),
-                "Yaradılma tarixi": formatDMY(t.created_at, true),
-                "Yenilənmə tarixi": formatDMY(t.updated_at, true),
-              }));
+              try {
+                // 🚀 XLSX yalnız klik zamanı yüklənəcək
+                const XLSX = await import("xlsx");
 
-              const worksheet = XLSX.utils.json_to_sheet(data);
-              const workbook = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıqlar");
+                const data = filteredFlat.map((t) => ({
+                  "Başlıq": t.title,
+                  "Təsvir": t.description ?? "",
+                  "Status": t.status.replace("_", " "),
+                  "Prioritet": t.priority,
+                  "Başlama tarixi": formatDMY(t.start_date),
+                  "Son tarix": formatDMY(t.due_date),
+                  "Təyin olunan": (t.assigned_to ?? []).join(", "),
+                  "Fayllar": (t.files ?? []).map(f => f.name).join(", "),
+                  "Yaradılma tarixi": formatDMY(t.created_at, true),
+                  "Yenilənmə tarixi": formatDMY(t.updated_at, true),
+                }));
 
-              XLSX.writeFile(workbook, "tapshiriqlar.xlsx");
+                const worksheet = XLSX.utils.json_to_sheet(data);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıqlar");
+
+                XLSX.writeFile(workbook, "tapshiriqlar.xlsx");
+
+              } catch (err) {
+                console.error("Export error:", err);
+              }
             }}
             className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
           >
@@ -690,354 +911,413 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
 
 
 
-      {/* BOARD */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid md:grid-cols-4 gap-6">
-          {STATUSES.map((st) => (
-            <Column
-              key={st}
-              id={st}
-              title={st}
-              tasks={filteredTasksBy[st]}
-              onSelect={setSelectedTask}
-            />
-          ))}
-        </div>
-
-        <DragOverlay>
-          {activeTask && (
-            <div className="bg-white p-4 rounded-xl shadow-2xl border w-[260px]">
-              <div className="font-semibold">{activeTask.title}</div>
-              <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-                <span>{activeTask.status}</span>
-                <PriorityPill p={String(activeTask.priority)} />
-              </div>
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
-
-      <div className="bg-white p-6 rounded-2xl shadow border grid md:grid-cols-3 lg:grid-cols-6 gap-6">
-
-<MultiSelectDropdown
-  label="Status"
-  placeholder="Status seç"
-  value={statusFilter}
-  onChange={(vals) => {
-    setStatusFilter(vals as Status[]);
-    setPage(1);
-  }}
-  options={STATUSES.map((s) => ({
-    value: s,
-    label: s.replace("_", " "),
-  }))}
-/>
-
-<MultiSelectDropdown
-  label="Prioritet"
-  placeholder="Prioritet seç"
-  value={priorityFilter}
-  onChange={(vals) => {
-    setPriorityFilter(vals);
-    setPage(1);
-  }}
-  options={[
-    { value: "LOW", label: "LOW" },
-    { value: "MEDIUM", label: "MEDIUM" },
-    { value: "HIGH", label: "HIGH" },
-    { value: "URGENT", label: "URGENT" },
-  ]}
-/>
-     <MultiSelectDropdown
-  label="Assigned"
-  placeholder="User seç"
-  value={assignedFilter}
-  onChange={(vals) => {
-    setAssignedFilter(vals);
-    setPage(1);
-  }}
-  options={[
-    ...new Set(
-      rawTasks
-        .map((t) => t.assigned_to)
-        .filter((x): x is string => !!x)
-    ),
-  ].map((u) => ({
-    value: u,
-    label: u,
-  }))}
-/>
-
-        {/* START RANGE */}
-        <div className="space-y-1">
-          <div className="text-xs font-medium text-gray-600">Start Range</div>
-          <RangePicker
-            format="DD/MM/YYYY"
-            value={[
-              startRange[0] ? dayjs(startRange[0]) : null,
-              startRange[1] ? dayjs(startRange[1]) : null,
-            ]}
-            onChange={(vals) => {
-              setStartRange([
-                vals?.[0] ? vals[0].format("YYYY-MM-DD") : null,
-                vals?.[1] ? vals[1].format("YYYY-MM-DD") : null,
-              ]);
-              setPage(1);
-            }}
-            style={{ width: "100%" }}
-          />
-        </div>
-
-        {/* DUE RANGE */}
-        <div className="space-y-1">
-          <div className="text-xs font-medium text-gray-600">Due Range</div>
-          <RangePicker
-            format="DD/MM/YYYY"
-            value={[
-              dueRange[0] ? dayjs(dueRange[0]) : null,
-              dueRange[1] ? dayjs(dueRange[1]) : null,
-            ]}
-            onChange={(vals) => {
-              setDueRange([
-                vals?.[0] ? vals[0].format("YYYY-MM-DD") : null,
-                vals?.[1] ? vals[1].format("YYYY-MM-DD") : null,
-              ]);
-              setPage(1);
-            }}
-            style={{ width: "100%" }}
-          />
-        </div>
-
-        {/* RESET */}
-        <button
-          onClick={() => {
-            setStatusFilter([]);
-            setPriorityFilter([]);
-            setAssignedFilter([]);
-            setStartRange([null, null]);
-            setDueRange([null, null]);
-            setQ("");
-          }}
-          className="bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 font-medium"
+      {/* ===================== MODERN BOARD ===================== */}
+{viewMode === "board" && (
+  <DndContext
+    sensors={sensors}
+    collisionDetection={closestCenter}
+    onDragStart={handleDragStart}
+    onDragEnd={handleDragEnd}
+  >
+    <div className="flex gap-6 overflow-x-auto pb-6 pt-2">
+      {memoizedColumns.map((col) => (
+        <div
+          key={col.id}
+          className="min-w-[340px] max-w-[340px] flex-shrink-0"
         >
-          Sıfırla
-        </button>
+          <Column
+            id={col.id}
+            title={col.id}
+            tasks={col.tasks}
+            onSelect={(task) => {
+              setViewTask(task);
+              setDrawerOpen(true);
+            }}
+          />
+        </div>
+      ))}
+    </div>
 
-      </div>
-
-      {/* TABLE + PAGINATION */}
-      <div className="bg-white rounded-2xl shadow border overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
-          <div className="font-semibold">Tapşırıqlar Cədvəli</div>
-          <div className="text-sm text-gray-600">
-            Page <span className="font-medium">{page}</span> /{" "}
-            <span className="font-medium">{totalPages}</span> —{" "}
-            <span className="font-medium">{filteredFlat.length}</span> items
+    <DragOverlay>
+      {activeTask && (
+        <div className="bg-white p-5 rounded-3xl shadow-2xl border w-[300px]">
+          <div className="font-semibold text-gray-900">
+            {activeTask.title}
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+            <span>{activeTask.status.replace("_", " ")}</span>
+            <PriorityPill p={String(activeTask.priority)} />
           </div>
         </div>
+      )}
+    </DragOverlay>
+  </DndContext>
+)}
 
-        <table className="w-full text-sm">
-       <thead className="bg-gray-100">
-  <tr>
-    <th
-      onClick={() => toggleSort("title")}
-      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
-    >
-      Title {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-    </th>
+      {viewMode === "list" && (
+        <>
+          <div className="
+  bg-white p-6 rounded-2xl shadow border
+  grid grid-cols-1
+  sm:grid-cols-2
+  md:grid-cols-3
+  lg:grid-cols-6
+  gap-6
+">
+            <MultiSelectDropdown
+              label="Status"
+              placeholder="Status seç"
+              value={statusFilter}
+              onChange={(vals) => {
+                setStatusFilter(vals as Status[]);
+                setPage(1);
+              }}
+              options={STATUSES.map((s) => ({
+                value: s,
+                label: s.replace("_", " "),
+              }))}
+            />
 
-    <th
-      onClick={() => toggleSort("status")}
-      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
-    >
-      Status {sortBy === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-    </th>
+            <MultiSelectDropdown
+              label="Prioritet"
+              placeholder="Prioritet seç"
+              value={priorityFilter}
+              onChange={(vals) => {
+                setPriorityFilter(vals);
+                setPage(1);
+              }}
+              options={[
+                { value: "LOW", label: "LOW" },
+                { value: "MEDIUM", label: "MEDIUM" },
+                { value: "HIGH", label: "HIGH" },
+                { value: "URGENT", label: "URGENT" },
+              ]}
+            />
+            <MultiSelectDropdown
+              label="Assigned"
+              placeholder="User seç"
+              value={assignedFilter}
+              onChange={(vals) => {
+                setAssignedFilter(vals);
+                setPage(1);
+              }}
+              options={[
+                ...new Set(
+                  rawTasks.flatMap((t) => t.assigned_to ?? [])
+                ),
+              ].map((u) => ({
+                value: u,
+                label: u,
+              }))}
+            />
 
-    <th
-      onClick={() => toggleSort("priority")}
-      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
-    >
-      Priority {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-    </th>
+            {/* START RANGE */}
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-gray-600">Start Range</div>
+              <RangePicker
+                format="DD/MM/YYYY"
+                value={[
+                  startRange[0] ? dayjs(startRange[0]) : null,
+                  startRange[1] ? dayjs(startRange[1]) : null,
+                ]}
+                onChange={(vals) => {
+                  setStartRange([
+                    vals?.[0] ? vals[0].format("YYYY-MM-DD") : null,
+                    vals?.[1] ? vals[1].format("YYYY-MM-DD") : null,
+                  ]);
+                  setPage(1);
+                }}
+                style={{ width: "100%" }}
+              />
+            </div>
 
-    <th
-      onClick={() => toggleSort("start_date")}
-      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
-    >
-      Start {sortBy === "start_date" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-    </th>
+            {/* DUE RANGE */}
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-gray-600">Due Range</div>
+              <RangePicker
+                format="DD/MM/YYYY"
+                value={[
+                  dueRange[0] ? dayjs(dueRange[0]) : null,
+                  dueRange[1] ? dayjs(dueRange[1]) : null,
+                ]}
+                onChange={(vals) => {
+                  setDueRange([
+                    vals?.[0] ? vals[0].format("YYYY-MM-DD") : null,
+                    vals?.[1] ? vals[1].format("YYYY-MM-DD") : null,
+                  ]);
+                  setPage(1);
+                }}
+                style={{ width: "100%" }}
+              />
+            </div>
 
-    <th
-      onClick={() => toggleSort("due_date")}
-      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
-    >
-      Due {sortBy === "due_date" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-    </th>
+            {/* RESET */}
+            <button
+              onClick={() => {
+                setStatusFilter([]);
+                setPriorityFilter([]);
+                setAssignedFilter([]);
+                setStartRange([null, null]);
+                setDueRange([null, null]);
+                setSearchInput("");
+                setQ("");
+              }}
+              className="bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 font-medium"
+            >
+              Sıfırla
+            </button>
 
-    <th
-      onClick={() => toggleSort("assigned_to")}
-      className="p-3 text-left cursor-pointer select-none hover:bg-gray-200"
-    >
-      Assigned {sortBy === "assigned_to" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-    </th>
+          </div>
 
-    <th className="p-3 text-left">
-      Files
-    </th>
+          {/* TABLE + PAGINATION */}
+          {/* TABLE + PAGINATION */}
+          <div className="bg-white rounded-2xl shadow border overflow-hidden">
 
-    <th className="p-3 text-right">
-      Actions
-    </th>
-  </tr>
-</thead>
-          <tbody>
-            {paginatedTasks.map((t) => (
-              <tr key={t.id} className="border-t hover:bg-gray-50">
-                <td className="p-3">
-                  <div className="font-medium text-gray-900">{t.title}</div>
-                  {t.description ? (
-                    <div className="text-xs text-gray-500 line-clamp-1">
-                      {t.description}
-                    </div>
-                  ) : null}
-                </td>
+            {/* HEADER */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b bg-gray-50 gap-2">
+              <div className="font-semibold">Tapşırıqlar Cədvəli</div>
+              <div className="text-sm text-gray-600">
+                Page <span className="font-medium">{page}</span> /{" "}
+                <span className="font-medium">{totalPages}</span> —{" "}
+                <span className="font-medium">{filteredFlat.length}</span> items
+              </div>
+            </div>
 
-                <td className="p-3">{t.status}</td>
+            {/* ========================= */}
+            {/* DESKTOP TABLE (lg+) */}
+            {/* ========================= */}
+            <div className="hidden lg:block w-full overflow-x-auto">
+              <table className="w-full min-w-[1100px] text-sm">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th onClick={() => toggleSort("title")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
+                      Title {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    </th>
+                    <th onClick={() => toggleSort("status")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
+                      Status {sortBy === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    </th>
+                    <th onClick={() => toggleSort("priority")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
+                      Priority {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    </th>
+                    <th onClick={() => toggleSort("start_date")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
+                      Start
+                    </th>
+                    <th onClick={() => toggleSort("due_date")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
+                      Due
+                    </th>
+                    <th onClick={() => toggleSort("assigned_to")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
+                      Assigned
+                    </th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
 
-                <td className="p-3">
-                  <PriorityPill p={String(t.priority)} />
-                </td>
+                <tbody>
+                  {paginatedTasks.map((t) => (
+                    <tr key={t.id} className="border-t hover:bg-gray-50">
+                      <td className="p-3 font-medium">{t.title}</td>
+                      <td className="p-3">{t.status}</td>
+                      <td className="p-3"><PriorityPill p={String(t.priority)} /></td>
+                      <td className="p-3">{formatDMY(t.start_date)}</td>
+                      <td className="p-3">{formatDMY(t.due_date)}</td>
+                      <td className="p-3">{(t.assigned_to ?? []).join(", ") || "-"}</td>
+                      <td className="p-3 text-right space-x-2">
+                        <div className="relative inline-block">
+                          <button
+                            onClick={() => {
+                              setViewTask(t);
+                              setDrawerOpen(true);
+                            }}
+                            className="border px-3 py-1.5 rounded-lg relative"
+                          >
+                            Bax
+                          </button>
 
-                <td className="p-3">{formatDMY(t.start_date)}</td>
-                {/* ✅ DUE */}
-                <td className="p-3">{formatDMY(t.due_date)}</td>
+                          {t.comment_count ? (
+                            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+                              {t.comment_count}
+                            </span>
+                          ) : null}
+                        </div>
 
-                {/* ✅ ASSIGNED */}
-                <td className="p-3">
-                  {t.assigned_to ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center">
-                        {t.assigned_to.slice(0, 1).toUpperCase()}
-                      </div>
-                      <span className="text-gray-700">{t.assigned_to}</span>
-                    </div>
-                  ) : (
-                    "-"
-                  )}
-                </td>
-
-                {/* ✅ FILES */}
-                <td className="p-3">
-                  {t.files?.length ? (
-                    <div className="flex flex-col gap-1">
-                      {t.files.map((file, i) => (
                         <button
-                          key={i}
-                          onClick={async () => {
-                            const { data } = await supabase.storage
-                              .from("task-files")
-                              .createSignedUrl(file.path, 60);
-
-                            if (!data?.signedUrl) return;
-
-                            const res = await fetch(data.signedUrl);
-                            const blob = await res.blob();
-
-                            const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = file.name;   // 🔥 BURASI ƏSASDIR
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                            window.URL.revokeObjectURL(url);
-                          }}
-                          className="text-xs text-indigo-600 hover:underline text-left"
+                          onClick={() => setSelectedTask(t)}
+                          className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
                         >
-                          📎 {file.name}
+                          Edit
                         </button>
-                      ))}
-                    </div>
-                  ) : (
-                    "-"
+
+                        <button
+                          onClick={async () => {
+                            if (!confirm("Bu tapşırıq silinsin?")) return;
+
+                            const snapshot = tasksBy;
+
+                            // optimistic remove
+                            const f = findTask(tasksBy, t.id);
+                            if (!f) return;
+
+                            const next: TasksByStatus = {
+                              TODO: [...tasksBy.TODO],
+                              IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+                              DONE: [...tasksBy.DONE],
+                              CANCELLED: [...tasksBy.CANCELLED],
+                            };
+
+                            next[f.status].splice(f.index, 1);
+                            setTasksBy(next);
+
+                            try {
+                              await deleteTask(t.id);
+                              pushActivity(`• Deleted "${t.title}"`);
+                            } catch {
+                              setTasksBy(snapshot);
+                              pushActivity(`• Delete failed "${t.title}"`);
+                            }
+                          }}
+                          className="border px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50"
+                        >
+                          Sil
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {paginatedTasks.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-gray-500">
+                        No tasks found.
+                      </td>
+                    </tr>
                   )}
-                </td>
+                </tbody>
+              </table>
+            </div>
 
-                <td className="p-3 text-right">
-                  <div className="inline-flex gap-2">
+            {/* ========================= */}
+            {/* MOBILE + TABLET CARDS (< lg) */}
+            {/* ========================= */}
+            <div className="lg:hidden p-4 space-y-4">
+              {paginatedTasks.map((t) => (
+                <div key={t.id} className="border rounded-xl p-4 shadow-sm bg-white">
 
-                    <button
-                      onClick={() => {
-                        setViewTask(t);
-                        setDrawerOpen(true);
-                      }}
-                      className="border px-3 py-1.5 rounded-lg hover:bg-white"
-                    >
-                      Bax
-                    </button>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-semibold">{t.title}</div>
+                      {t.description && (
+                        <div className="text-xs text-gray-500 mt-1 line-clamp-2">
+                          {t.description}
+                        </div>
+                      )}
+                    </div>
 
+                    <PriorityPill p={String(t.priority)} />
+                  </div>
+
+                  <div className="mt-3 text-sm text-gray-600 space-y-1">
+                    <div>Status: {t.status}</div>
+                    <div>Start: {formatDMY(t.start_date)}</div>
+                    <div>Due: {formatDMY(t.due_date)}</div>
+                    <div>Assigned: {(t.assigned_to ?? []).join(", ") || "-"}</div>
+                  </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <div className="relative flex-1">
+                      <button
+                        onClick={() => {
+                          setViewTask(t);
+                          setDrawerOpen(true);
+                        }}
+                        className="w-full border px-3 py-2 rounded-lg text-sm"
+                      >
+                        Bax
+                      </button>
+
+                      {t.comment_count ? (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+                          {t.comment_count}
+                        </span>
+                      ) : null}
+                    </div>
                     <button
                       onClick={() => setSelectedTask(t)}
-                      className="border px-3 py-1.5 rounded-lg hover:bg-white"
+                      className="flex-1 border px-3 py-2 rounded-lg text-sm"
                     >
                       Edit
                     </button>
 
                     <button
-                     onClick={async () => {
-  if (!confirm("Delete this task?")) return;
+                      onClick={async () => {
+                        if (!confirm("Bu tapşırıq silinsin?")) return;
 
-  try {
-    await deleteTask(t.id);
-    message.success("Task silindi");
-    loadTasks();
-  } catch (err: any) {
-    message.error(err?.message || "İcazə yoxdur");
-  }
-}}
-                      className="border px-3 py-1.5 rounded-lg hover:bg-white text-red-600 border-red-200"
+                        const snapshot = tasksBy;
+                        const f = findTask(tasksBy, t.id);
+                        if (!f) return;
+
+                        const next: TasksByStatus = {
+                          TODO: [...tasksBy.TODO],
+                          IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+                          DONE: [...tasksBy.DONE],
+                          CANCELLED: [...tasksBy.CANCELLED],
+                        };
+
+                        next[f.status].splice(f.index, 1);
+                        setTasksBy(next);
+
+                        try {
+                          await deleteTask(t.id);
+                          pushActivity(`• Deleted "${t.title}"`);
+                        } catch {
+                          setTasksBy(snapshot);
+                          pushActivity(`• Delete failed "${t.title}"`);
+                        }
+                      }}
+                      className="flex-1 border px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
                     >
-                      Delete
+                      Sil
                     </button>
-
                   </div>
-                </td>
-              </tr>
-            ))}
+                </div>
+              ))}
 
-            {paginatedTasks.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500">
+              {paginatedTasks.length === 0 && (
+                <div className="text-center text-gray-500 py-6">
                   No tasks found.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+                </div>
+              )}
+            </div>
 
-        <div className="flex items-center justify-between p-4 border-t bg-white">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="border px-4 py-2 rounded-xl hover:bg-gray-50 disabled:opacity-50"
-            disabled={page <= 1}
-          >
-            Prev
-          </button>
+            {/* ========================= */}
+            {/* PAGINATION */}
+            {/* ========================= */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t bg-white">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="border px-4 py-2 rounded-xl w-full sm:w-auto"
+                disabled={page <= 1}
+              >
+                Prev
+              </button>
 
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="border px-4 py-2 rounded-xl hover:bg-gray-50 disabled:opacity-50"
-            disabled={page >= totalPages}
-          >
-            Next
-          </button>
-        </div>
-      </div>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="border px-4 py-2 rounded-xl w-full sm:w-auto"
+                disabled={page >= totalPages}
+              >
+                Next
+              </button>
+            </div>
+
+          </div>
+        </>
+      )}
+
+      {viewMode === "calendar" && (
+  <CalendarView tasks={filteredFlat} onSelectTask={(t) => {
+    setViewTask(t);
+    setDrawerOpen(true);
+  }} />
+)}
 
       {/* ACTIVITY PANEL
       <div className="bg-white p-6 rounded-2xl shadow border">
@@ -1056,6 +1336,7 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
       {selectedTask ? (
         <EditDrawer
           task={selectedTask}
+          users={users}
           onClose={() => setSelectedTask(null)}
           onSave={async (updates) => {
             const taskId = selectedTask.id;
@@ -1114,7 +1395,7 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
         />
       ) : null}
 
-      
+
 
 
 
@@ -1139,16 +1420,22 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
           }}
         >
           <div
-            className="drawer-print"
+            className="
+  drawer-print
+  bg-white
+  w-full
+  sm:w-[90%]
+  md:w-[650px]
+  lg:w-[700px]
+  h-full
+  ml-auto
+  p-4 sm:p-6
+  overflow-y-auto
+  shadow-2xl
+  transition-transform duration-200
+"
             style={{
-              width: 600,
-              height: "100%",
-              background: "#fff",
-              padding: 24,
-              overflowY: "auto",
-              boxShadow: "-30px 0 90px rgba(15,23,42,0.40)",
               transform: drawerOpen ? "translateX(0)" : "translateX(110%)",
-              transition: "transform 0.22s ease",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1161,31 +1448,40 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
               <div style={{ display: "flex", gap: 8 }}>
                 {/* EXPORT */}
                 <button
-                  onClick={() => {
-                    const data = [{
-                      "Başlıq": viewTask.title,
-                      "Təsvir": viewTask.description ?? "",
-                      "Status": viewTask.status.replace("_", " "),
-                      "Prioritet": viewTask.priority,
-                      "Başlama tarixi": formatDMY(viewTask.start_date),
-                      "Son tarix": formatDMY(viewTask.due_date),
-                      "Təyin olunan": viewTask.assigned_to ?? "",
-                      "Fayllar": (viewTask.files ?? []).map(f => f.name).join(", "),
-                      "Yaradılma tarixi": formatDMY(viewTask.created_at, true),
-                      "Yenilənmə tarixi": formatDMY(viewTask.updated_at, true),
-                    }];
+                  onClick={async () => {
+                    try {
+                      // 🚀 XLSX only when clicked
+                      const XLSX = await import("xlsx");
 
-                    const worksheet = XLSX.utils.json_to_sheet(data);
-                    const workbook = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıq");
+                      const data = [{
+                        "Başlıq": viewTask.title,
+                        "Təsvir": viewTask.description ?? "",
+                        "Status": viewTask.status.replace("_", " "),
+                        "Prioritet": viewTask.priority,
+                        "Başlama tarixi": formatDMY(viewTask.start_date),
+                        "Son tarix": formatDMY(viewTask.due_date),
+                        "Təyin olunan": (viewTask.assigned_to ?? []).join(", "),
+                        "Fayllar": (viewTask.files ?? []).map(f => f.name).join(", "),
+                        "Yaradılma tarixi": formatDMY(viewTask.created_at, true),
+                        "Yenilənmə tarixi": formatDMY(viewTask.updated_at, true),
+                      }];
 
-                    const safeName = (viewTask.title || "task")
-                      .toLowerCase()
-                      .replace(/\s+/g, "-")
-                      .replace(/[^a-z0-9\-]/g, "")
-                      .slice(0, 50);
+                      const worksheet = XLSX.utils.json_to_sheet(data);
+                      const workbook = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıq");
 
-                    XLSX.writeFile(workbook, `${safeName}.xlsx`);
+                      // təhlükəsiz file adı
+                      const safeName = (viewTask.title || "task")
+                        .toLowerCase()
+                        .replace(/\s+/g, "-")
+                        .replace(/[^a-z0-9\-]/g, "")
+                        .slice(0, 50);
+
+                      XLSX.writeFile(workbook, `${safeName}.xlsx`);
+
+                    } catch (err) {
+                      console.error("Drawer export error:", err);
+                    }
                   }}
                   style={{
                     padding: "6px 10px",
@@ -1210,6 +1506,67 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
                   }}
                 >
                   Print
+                </button>
+
+                <button
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    setTimeout(() => {
+                      setSelectedTask(viewTask);
+                    }, 200);
+                  }}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #c7d2fe",
+                    background: "#eef2ff",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    color: "#4338ca",
+                  }}
+                >
+                  Edit
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (!confirm("Bu tapşırıq silinsin?")) return;
+
+                    const snapshot = tasksBy;
+                    const f = findTask(tasksBy, viewTask.id);
+                    if (!f) return;
+
+                    const next: TasksByStatus = {
+                      TODO: [...tasksBy.TODO],
+                      IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+                      DONE: [...tasksBy.DONE],
+                      CANCELLED: [...tasksBy.CANCELLED],
+                    };
+
+                    next[f.status].splice(f.index, 1);
+                    setTasksBy(next);
+
+                    try {
+                      await deleteTask(viewTask.id);
+                      pushActivity(`• Deleted "${viewTask.title}"`);
+                      setDrawerOpen(false);
+                      setTimeout(() => setViewTask(null), 200);
+                    } catch {
+                      setTasksBy(snapshot);
+                      pushActivity(`• Delete failed "${viewTask.title}"`);
+                    }
+                  }}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #fecaca",
+                    background: "#fee2e2",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    color: "#b91c1c",
+                  }}
+                >
+                  Delete
                 </button>
 
                 <button
@@ -1266,7 +1623,11 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
 
               <DrawerRow
                 label="Təyin olunan"
-                value={viewTask.assigned_to || "-"}
+                value={
+                  viewTask.assigned_to?.length
+                    ? viewTask.assigned_to.join(", ")
+                    : "-"
+                }
               />
 
               <DrawerRow
@@ -1293,7 +1654,13 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
                               .createSignedUrl(f.path, 60);
 
                             if (data?.signedUrl) {
-                              window.open(data.signedUrl, "_blank");
+                              const a = document.createElement("a");
+                              a.href = data.signedUrl;
+                              a.target = "_blank";
+                              a.rel = "noopener noreferrer";
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
                             }
                           }}
                           style={{
@@ -1313,7 +1680,7 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
                 />
               ) : null}
 
-                            {/* COMMENTS SECTION */}
+              {/* COMMENTS SECTION */}
               <div style={{ marginTop: 30 }}>
                 <h3 style={{ fontWeight: 900, marginBottom: 10 }}>
                   💬 Şərhlər
@@ -1321,53 +1688,107 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
 
                 {comments.length ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                   {comments.map((c) => (
-  <div
-    key={c.id}
-    style={{
-      background: "#f3f4f6",
-      padding: 12,
-      borderRadius: 10,
-    }}
-  >
-    <div style={{ fontSize: 12, color: "#6b7280" }}>
-      {c.author_name} • {formatDMY(c.created_at, true)}
-    </div>
+                    {comments.map((c) => {
+                      // 🔥 müəllifdən başqa oxuyanlar
+                      const seenBy =
+                        Array.isArray(c.reads)
+                          ? c.reads.filter(
+                            (r: any) => r.employee_id !== c.author_id
+                          )
+                          : [];
 
-    {c.message && (
-  <div style={{ marginTop: 6, fontWeight: 600 }}>
-    {c.message}
-  </div>
-)}
+                      return (
+                        <div
+                          key={c.id}
+                          style={{
+                            background: "#f3f4f6",
+                            padding: 12,
+                            borderRadius: 10,
+                          }}
+                        >
+                          {/* HEADER */}
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>
+                            {c.author_name} • {formatDMY(c.created_at, true)}
+                          </div>
 
-    {/* 🔥 FILES BURADA OLMALIDIR */}
-    {c.files?.length ? (
-      <div style={{ marginTop: 8 }}>
-        {c.files.map((f: any, i: number) => (
-          <button
-            key={i}
-            onClick={async () => {
-              const { data } = await supabase.storage
-                .from("task-comment-files")
-                .createSignedUrl(f.path, 60);
+                          {/* 🔥 SEEN INFO */}
+                          {seenBy.length > 0 && (
+                            <div className="text-xs text-green-600 mt-1">
+                              {seenBy
+                                .map(
+                                  (r: any) =>
+                                    `${r.employees?.ad ?? ""} ${r.employees?.soyad ?? ""
+                                      }`.trim()
+                                )
+                                .join(", ")} tərəfindən görüldü
+                            </div>
+                          )}
 
-              if (data?.signedUrl) {
-                window.open(data.signedUrl, "_blank");
-              }
-            }}
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#4f46e5",
-            }}
-          >
-            📎 {f.name}
-          </button>
-        ))}
-      </div>
-    ) : null}
-  </div>
-))}
+                          {/* MESSAGE */}
+                          {c.message && (
+                            <div style={{ marginTop: 6, fontWeight: 600 }}>
+                              <div
+                                dangerouslySetInnerHTML={{ __html: c.message }}
+                                style={{ marginTop: 6 }}
+                              />
+                            </div>
+                          )}
+
+                          {/* FILES */}
+                          {Array.isArray(c.files) && c.files.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {c.files.map((f: any, i: number) => {
+                                const ext = f.name?.split(".").pop()?.toLowerCase();
+
+                                const getIcon = () => {
+                                  if (["png", "jpg", "jpeg", "webp"].includes(ext))
+                                    return "🖼️";
+                                  if (["pdf"].includes(ext)) return "📄";
+                                  if (["doc", "docx"].includes(ext)) return "📝";
+                                  if (["xls", "xlsx"].includes(ext)) return "📊";
+                                  return "📎";
+                                };
+
+                                return (
+                                  <div
+                                    key={i}
+                                    onClick={async () => {
+                                      if (!f?.path) return;
+
+                                      const { data, error } =
+                                        await supabase.storage
+                                          .from("task-comment-files")
+                                          .createSignedUrl(f.path, 60);
+
+                                      if (error || !data?.signedUrl) {
+                                        console.error("Signed URL error:", error);
+                                        return;
+                                      }
+
+                                      window.open(data.signedUrl, "_blank");
+                                    }}
+                                    className="flex items-center gap-2 bg-white border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all px-3 py-2 rounded-xl cursor-pointer text-sm"
+                                  >
+                                    <span className="text-lg">{getIcon()}</span>
+
+                                    <div className="flex flex-col">
+                                      <span className="font-medium text-gray-800 truncate max-w-[160px]">
+                                        {f.name}
+                                      </span>
+                                      {f.size && (
+                                        <span className="text-xs text-gray-400">
+                                          {(f.size / 1024).toFixed(1)} KB
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div style={{ color: "#9ca3af", marginBottom: 10 }}>
@@ -1375,41 +1796,82 @@ setComments(Array.isArray(data.comments) ? data.comments : []);
                   </div>
                 )}
 
-             
+
 
                 {/* ADD COMMENT */}
-                <div style={{ marginTop: 15 }}>
-                  <textarea
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Şərh yaz..."
-                    style={{
-                      width: "100%",
-                      borderRadius: 10,
-                      border: "1px solid #e5e7eb",
-                      padding: 10,
-                      minHeight: 80,
-                    }}
-                  />
-                  <input
-  type="file"
-  multiple
-  onChange={(e) =>
-    setCommentFiles(Array.from(e.target.files || []))
-  }
-  style={{ marginTop: 8 }}
-/>
+                {/* ADD COMMENT */}
+                <div className="mt-4 border rounded-xl p-3 bg-white">
 
+                  {/* TOOLBAR */}
+                  <div className="flex gap-2 mb-2">
+                    <button
+                      onClick={() => editor?.chain().focus().toggleBold().run()}
+                      className="px-2 py-1 border rounded text-sm"
+                    >
+                      B
+                    </button>
+
+                    <button
+                      onClick={() => editor?.chain().focus().toggleItalic().run()}
+                      className="px-2 py-1 border rounded text-sm"
+                    >
+                      I
+                    </button>
+
+                    <label className="px-2 py-1 border rounded text-sm cursor-pointer">
+                      📎 Fayl
+                      <input
+                        type="file"
+                        hidden
+                        multiple
+                        onChange={(e) =>
+                          setCommentFiles(Array.from(e.target.files || []))
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  {/* EDITOR */}
+                  <div className="border rounded-lg p-2 min-h-[100px]">
+                    {editor && <EditorContent editor={editor} />}
+                  </div>
+
+                  {/* SELECTED FILES PREVIEW */}
+                  {commentFiles.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {commentFiles.map((file, i) => (
+                        <div
+                          key={i}
+                          className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg text-sm"
+                        >
+                          <span>📎 {file.name}</span>
+                          <button
+                            onClick={() =>
+                              setCommentFiles((prev) =>
+                                prev.filter((_, index) => index !== i)
+                              )
+                            }
+                            className="text-red-500"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SUBMIT BUTTON */}
                   <button
-                    onClick={handleAddComment}
-                    style={{
-                      marginTop: 8,
-                      padding: "8px 16px",
-                      borderRadius: 8,
-                      background: "#4f46e5",
-                      color: "#fff",
-                      fontWeight: 700,
+                    onClick={async () => {
+                      if (!newComment.trim() && commentFiles.length === 0) return;
+
+                      await handleAddComment();
+
+
+                      // 🔥 editor temizle
+                      editor?.commands.clearContent();
                     }}
+                    className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
                   >
                     Göndər
                   </button>
@@ -1585,37 +2047,19 @@ function InfoRow({ label, value }: { label: string; value: any }) {
   );
 }
 
-function DrawerRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: any;
-}) {
+
+function DrawerRow({ label, value }: { label: string; value: any }) {
   return (
-    <div
-      style={{
-        background: "#f9fafb",
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        padding: 12,
-        display: "grid",
-        gridTemplateColumns: "180px 1fr",
-        gap: 10,
-      }}
-    >
-      <div style={{ fontWeight: 900, fontSize: 13 }}>
-        {label}
-      </div>
-      <div style={{ fontWeight: 700, fontSize: 13 }}>
-        {value ?? "-"}
-      </div>
+    <div className="bg-gray-50 border rounded-xl p-3 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
+      <div className="font-bold text-sm">{label}</div>
+      <div className="text-sm">{value ?? "-"}</div>
     </div>
   );
 }
 
 /* COLUMN */
-function Column({
+/* COLUMN */
+const Column = React.memo(function Column({
   id,
   title,
   tasks,
@@ -1631,16 +2075,44 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`bg-white rounded-2xl p-4 shadow border min-h-[220px] transition ${isOver ? "ring-2 ring-indigo-300" : ""
-        }`}
+      className={`
+        bg-gradient-to-b from-slate-50 to-white
+        rounded-3xl
+        p-5
+        shadow-lg
+        border border-slate-200
+        flex flex-col
+        max-h-[75vh]
+        transition
+        ${isOver ? "ring-2 ring-indigo-400" : ""}
+      `}
     >
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">{title}</h3>
-        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">{tasks.length}</span>
+      {/* HEADER */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-gray-800 tracking-wide">
+          {title.replace("_", " ")}
+        </h3>
+
+        <span
+          className="
+            text-xs
+            px-3
+            py-1
+            rounded-full
+            bg-indigo-100
+            text-indigo-700
+            font-semibold
+          "
+        >
+          {tasks.length}
+        </span>
       </div>
 
-      <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3">
+      <SortableContext
+        items={tasks.map((t) => t.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-4 overflow-y-auto pr-1 flex-1">
           {tasks.map((task) => (
             <TaskCard key={task.id} task={task} onSelect={onSelect} />
           ))}
@@ -1648,14 +2120,18 @@ function Column({
       </SortableContext>
     </div>
   );
-}
-
+});
 
 
 /* CARD */
-function TaskCard({ task, onSelect }: { task: Task; onSelect: (t: Task) => void }) {
-
-  const isDone = task.status === "DONE"; // 🔒 DONE check
+const TaskCard = React.memo(function TaskCard({
+  task,
+  onSelect,
+}: {
+  task: Task;
+  onSelect: (t: Task) => void;
+}) {
+  const isDone = task.status === "DONE";
 
   const {
     attributes,
@@ -1666,7 +2142,7 @@ function TaskCard({ task, onSelect }: { task: Task; onSelect: (t: Task) => void 
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: isDone, // 🔥 ƏSAS HİSSƏ — DONE drag disabled
+    disabled: isDone,
   });
 
   return (
@@ -1678,8 +2154,17 @@ function TaskCard({ task, onSelect }: { task: Task; onSelect: (t: Task) => void 
         opacity: isDragging ? 0.6 : isDone ? 0.7 : 1,
       }}
       {...attributes}
-      {...(!isDone ? listeners : {})} // 🔒 DONE üçün drag deaktiv
-      className={`bg-white p-4 rounded-xl shadow-sm border select-none ${isDone
+      {...(!isDone ? listeners : {})}
+      className={` bg-white
+  p-4
+  rounded-2xl
+  shadow-md
+  hover:shadow-xl
+  transition-all
+  border
+  border-slate-200
+  select-none
+  relative ${isDone
         ? "cursor-default opacity-70"
         : "hover:shadow-md cursor-grab active:cursor-grabbing"
         }`}
@@ -1692,31 +2177,49 @@ function TaskCard({ task, onSelect }: { task: Task; onSelect: (t: Task) => void 
         {task.title}
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-600">
+      <div className="absolute top-3 right-3 text-[10px] text-gray-400 font-semibold">
+  #{task.id.slice(0, 4)}
+</div>
+
+      <div className="
+  mt-2
+  flex
+  flex-col
+  sm:flex-row
+  sm:items-center
+  sm:justify-between
+  gap-2
+  text-xs
+  text-gray-600
+">
         <PriorityPill p={String(task.priority)} />
+
         {task.files?.length ? (
           <div className="mt-2 text-xs">
             <button
               onClick={async () => {
-                for (const file of task.files ?? []) {
+                try {
+                  for (const file of task.files ?? []) {
+                    if (!file?.path) continue;
 
-                  const { data } = await supabase.storage
-                    .from("task-files")
-                    .createSignedUrl(file.path, 60);
+                    const { data, error } = await supabase.storage
+                      .from("task-files")
+                      .createSignedUrl(file.path, 60);
 
-                  if (!data?.signedUrl) continue;
+                    if (error || !data?.signedUrl) continue;
 
-                  const res = await fetch(data.signedUrl);
-                  const blob = await res.blob();
-
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = file.name;   // ✅ ƏSAS HİSSƏ — real fayl adı
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  window.URL.revokeObjectURL(url);
+                    // 🚀 Production optimized (no blob, no extra fetch)
+                    const a = document.createElement("a");
+                    a.href = data.signedUrl;
+                    a.download = file.name || "file";
+                    a.target = "_blank";
+                    a.rel = "noopener noreferrer";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                  }
+                } catch (err) {
+                  console.error("File download error:", err);
                 }
               }}
               className="text-indigo-600 hover:underline"
@@ -1725,35 +2228,39 @@ function TaskCard({ task, onSelect }: { task: Task; onSelect: (t: Task) => void 
             </button>
           </div>
         ) : null}
+
         <span className="text-gray-500">
           {task.due_date ? `Due: ${task.due_date}` : ""}
         </span>
       </div>
     </div>
   );
-}
+});
 
 
 
 /* EDIT DRAWER */
 type EditDrawerProps = {
   task: Task;
+  users: { id: string; name: string }[];
   onClose: () => void;
   onSave: (updates: Partial<Task>) => Promise<void> | void;
 };
 
 
 
-function EditDrawer({ task, onClose, onSave }: EditDrawerProps) {
+function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
   const [form, setForm] = useState<Partial<Task>>({
     title: task.title,
     description: task.description ?? "",
-    status: (task.status as any) ?? "TODO",
-    priority: (task.priority as any) ?? "MEDIUM",
+    status: task.status,
+    priority: task.priority,
     start_date: task.start_date ?? null,
     due_date: task.due_date ?? null,
-    assigned_to: task.assigned_to ?? null,
+    assigned_to: task.assigned_to ?? [],
   });
+
+
 
   const [newFiles, setNewFiles] = useState<File[]>([]);
 
@@ -1761,141 +2268,243 @@ function EditDrawer({ task, onClose, onSave }: EditDrawerProps) {
     setForm({
       title: task.title,
       description: task.description ?? "",
-      status: (task.status as any) ?? "TODO",
-      priority: (task.priority as any) ?? "MEDIUM",
+      status: task.status,
+      priority: task.priority,
       start_date: task.start_date ?? null,
       due_date: task.due_date ?? null,
-      assigned_to: task.assigned_to ?? null,
+      assigned_to: task.assigned_to ?? [],
     });
   }, [task]);
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex justify-end z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white w-full md:w-[600px] h-full p-6 overflow-y-auto shadow-2xl">
-        <div className="flex justify-between mb-6">
-          <h2 className="text-xl font-bold">Edit Task</h2>
-          <button onClick={onClose}>Close</button>
+      <div className="bg-white w-full max-w-[720px] rounded-2xl shadow-2xl border overflow-hidden">
+
+        {/* HEADER */}
+        <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+          <h2 className="text-lg font-bold">Edit Task</h2>
+          <button onClick={onClose}>✖</button>
         </div>
 
-        {/* TITLE */}
-        <input
-          className="w-full border rounded-lg px-3 py-2 mb-4"
-          value={form.title ?? ""}
-          onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-        />
+        {/* CONTENT */}
+        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
 
-        {/* DESCRIPTION */}
-        <textarea
-          className="w-full border rounded-lg px-3 py-2 mb-4 min-h-[120px]"
-          value={form.description ?? ""}
-          onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-        />
-
-        {/* START DATE */}
-        <div className="mb-4">
-          <label className="text-sm font-medium text-gray-700">
-            Start date
-          </label>
-          <input
-            type="date"
-            className="w-full border rounded-lg px-3 py-2"
-            value={(form.start_date ?? "") as string}
-            onChange={(e) =>
-              setForm((p) => ({
-                ...p,
-                start_date: e.target.value || null,
-              }))
-            }
-          />
-        </div>
-
-        {/* FILES */}
-        <div className="mb-6">
-          <div className="font-medium mb-2">Files</div>
-
-          {task.files?.length ? (
-            <div className="space-y-2 mb-4">
-              {task.files.map((file, i) => (
-                <div
-                  key={i}
-                  className="flex justify-between items-center bg-gray-50 p-2 rounded-lg"
-                >
-                  <span className="text-sm">{file.name}</span>
-
-                  <button
-                    onClick={async () => {
-                      const { data } = await supabase.storage
-                        .from("task-files")
-                        .createSignedUrl(file.path, 60);
-
-                      if (data?.signedUrl) {
-                        window.open(data.signedUrl, "_blank");
-                      }
-                    }}
-                    className="text-indigo-600 text-sm"
-                  >
-                    Open
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-400 mb-4">No files</div>
-          )}
-
-          <input
-            type="file"
-            multiple
-            className="w-full border rounded-lg px-3 py-2"
-            onChange={(e) =>
-              setNewFiles(Array.from(e.target.files || []))
-            }
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={async () => {
-              let uploadedFiles = task.files ?? [];
-
-              if (newFiles.length > 0) {
-                for (const file of newFiles) {
-                  const fileName = `${Date.now()}-${file.name}`;
-
-                  const { error } = await supabase.storage
-                    .from("task-files")
-                    .upload(fileName, file);
-
-                  if (!error) {
-                    uploadedFiles.push({
-                      name: file.name,
-                      path: fileName,
-                      size: file.size,
-                    });
-                  }
-                }
+          {/* TITLE */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Title</label>
+            <input
+              className="w-full border rounded-lg px-3 py-2 mt-1"
+              value={form.title ?? ""}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, title: e.target.value }))
               }
+            />
+          </div>
 
-              await onSave({
-                ...form,
-                files: uploadedFiles,
-              });
-            }}
-            className="bg-indigo-600 text-white px-5 py-2 rounded-lg"
+          {/* DESCRIPTION */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Description</label>
+            <textarea
+              className="w-full border rounded-lg px-3 py-2 mt-1 min-h-[120px]"
+              value={form.description ?? ""}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, description: e.target.value }))
+              }
+            />
+          </div>
+
+          {/* GRID SECTION */}
+          <div className="grid grid-cols-2 gap-4">
+
+            {/* STATUS */}
+            <div>
+              <label className="text-sm font-medium text-gray-700">Status</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 mt-1"
+                value={form.status as string}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, status: e.target.value as any }))
+                }
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* PRIORITY */}
+            <div>
+              <label className="text-sm font-medium text-gray-700">Priority</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 mt-1"
+                value={form.priority as string}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, priority: e.target.value as any }))
+                }
+              >
+                <option value="LOW">LOW</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="HIGH">HIGH</option>
+                <option value="URGENT">URGENT</option>
+              </select>
+            </div>
+
+            {/* START DATE */}
+            <div>
+              <label className="text-sm font-medium text-gray-700">Start date</label>
+              <input
+                type="date"
+                className="w-full border rounded-lg px-3 py-2 mt-1"
+                value={(form.start_date ?? "") as string}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    start_date: e.target.value || null,
+                  }))
+                }
+              />
+            </div>
+
+            {/* DUE DATE */}
+            <div>
+              <label className="text-sm font-medium text-gray-700">Due date</label>
+              <input
+                type="date"
+                className="w-full border rounded-lg px-3 py-2 mt-1"
+                value={(form.due_date ?? "") as string}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    due_date: e.target.value || null,
+                  }))
+                }
+              />
+            </div>
+
+            {/* ASSIGNED */}
+            {/* ASSIGNED */}
+            <div className="col-span-2">
+              <label className="text-sm font-medium text-gray-700">
+                Assigned to
+              </label>
+
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="User seç"
+                className="w-full mt-1"
+                value={(form.assigned_to ?? []) as string[]}
+                onChange={(vals) =>
+                  setForm((p) => ({
+                    ...p,
+                    assigned_to: vals,
+                  }))
+                }
+                options={users.map((u) => ({
+                  value: u.id,
+                  label: u.name,
+                }))}
+              />
+            </div>
+          </div>
+
+          {/* FILES */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Add Files</label>
+            <input
+              type="file"
+              multiple
+              className="w-full border rounded-lg px-3 py-2 mt-1"
+              onChange={(e) =>
+                setNewFiles(Array.from(e.target.files || []))
+              }
+            />
+          </div>
+
+        </div>
+
+        {/* FOOTER */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="border px-5 py-2 rounded-lg"
           >
-            Save
-          </button>
-
-          <button onClick={onClose} className="border px-5 py-2 rounded-lg">
             Cancel
           </button>
+
+          <button
+            onClick={async () => {
+              await onSave(form);
+            }}
+            className="bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700"
+          >
+            Save Changes
+          </button>
         </div>
+
       </div>
+    </div>
+  );
+}
+
+function CalendarView({
+  tasks,
+  onSelectTask,
+}: {
+  tasks: Task[];
+  onSelectTask: (t: Task) => void;
+}) {
+
+  const dateCellRender = (value: dayjs.Dayjs) => {
+    const dayStr = value.format("YYYY-MM-DD");
+
+    const dayTasks = tasks.filter(
+      (t) =>
+        t.start_date === dayStr ||
+        t.due_date === dayStr
+    );
+
+    if (!dayTasks.length) return null;
+
+    return (
+      <div className="space-y-1">
+        {dayTasks.slice(0, 3).map((task) => (
+          <div
+            key={task.id}
+            onClick={() => onSelectTask(task)}
+            className="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 cursor-pointer hover:bg-indigo-100 truncate"
+          >
+            {task.title}
+          </div>
+        ))}
+
+        {dayTasks.length > 3 && (
+          <div className="text-[10px] text-gray-500">
+            + {dayTasks.length - 3} more
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow border">
+      <Calendar
+        fullscreen
+        cellRender={(value, info) => {
+          if (info.type === "date") {
+            return dateCellRender(value);
+          }
+          return info.originNode;
+        }}
+      />
     </div>
   );
 }
@@ -1927,7 +2536,16 @@ function CreateTaskModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white w-full max-w-[560px] rounded-2xl shadow-2xl border overflow-hidden">
+      <div className="
+  bg-white
+  w-full
+  max-w-[560px]
+  sm:rounded-2xl
+  rounded-xl
+  shadow-2xl
+  border
+  overflow-hidden
+">
         <div className="px-5 py-4 border-b bg-gray-50 flex items-center justify-between">
           <div className="font-bold text-lg">New Task</div>
           <button onClick={onClose} className="text-sm text-gray-600 hover:text-gray-800">
@@ -2011,12 +2629,27 @@ function CreateTaskModal({
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Assigned to</label>
+              <label className="text-sm font-medium text-gray-700">
+                Assigned to
+              </label>
+
               <input
                 className="w-full border rounded-lg px-3 py-2"
-                value={(form.assigned_to ?? "") as string}
-                onChange={(e) => setForm((p) => ({ ...p, assigned_to: e.target.value || null }))}
-                placeholder="optional user_id"
+                value={(form.assigned_to ?? []).join(", ")}
+                onChange={(e) => {
+                  const val = e.target.value;
+
+                  setForm((p) => ({
+                    ...p,
+                    assigned_to: val
+                      ? val
+                        .split(",")
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                      : null,
+                  }));
+                }}
+                placeholder="name1, name2"
               />
             </div>
           </div>
@@ -2048,32 +2681,3 @@ function CreateTaskModal({
   );
 }
 
-<style jsx global>{`
-  @media print {
-    body * {
-      visibility: hidden;
-    }
-
-    .drawer-print,
-    .drawer-print * {
-      visibility: visible;
-    }
-
-    .drawer-print {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-      box-shadow: none !important;
-    }
-
-    .no-print {
-      display: none !important;
-    }
-
-    @page {
-      size: A4;
-      margin: 20mm;
-    }
-  }
-`}</style>

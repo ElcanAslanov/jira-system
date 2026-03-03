@@ -6,31 +6,37 @@ import { ChevronDown } from "lucide-react";
 
 type Role = { id: string; name: string };
 type Perm = { key: string; label: string };
+type Company = { id: number; name: string };
 
 export default function RolePermissionsPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Perm[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  const [selectedCompanies, setSelectedCompanies] = useState<number[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [companySearch, setCompanySearch] = useState("");
 
-  // 🔥 NEW → whole permission section toggle
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(true);
+  const [isCompaniesOpen, setIsCompaniesOpen] = useState(true);
 
   /* ================= SIDEBAR ORDER ================= */
 
   const sidebarGroups = [
     {
-  title: "Dashboard",
-  permissions: [
-    "admin_dashboard.view",
-    "rehber_dashboard.view",
-    "boss_dashboard.view",
-    "employee_dashboard.view",
-  ],
-},
+      title: "Dashboard",
+      permissions: [
+        "admin_dashboard.view",
+        "rehber_dashboard.view",
+        "boss_dashboard.view",
+        "employee_dashboard.view",
+      ],
+    },
     {
       title: "İşçilər",
       permissions: ["employees.view", "employees.create"],
@@ -75,8 +81,14 @@ export default function RolePermissionsPage() {
         .from("permissions")
         .select("key,label");
 
+      const { data: companyData } = await supabase
+        .from("companies")
+        .select("id,name")
+        .order("name");
+
       setRoles(rolesData || []);
       setPermissions(permData || []);
+      setCompanies(companyData || []);
 
       if (rolesData?.length) {
         setSelectedRole(rolesData[0].id);
@@ -86,23 +98,32 @@ export default function RolePermissionsPage() {
     load();
   }, []);
 
-  /* ================= LOAD ROLE PERMISSIONS ================= */
+  /* ================= LOAD ROLE DATA ================= */
 
   useEffect(() => {
     if (!selectedRole) return;
 
-    async function loadRolePerms() {
-      const { data } = await supabase
+    async function loadRoleData() {
+      const { data: perms } = await supabase
         .from("role_permissions")
         .select("permission_key")
         .eq("role_id", selectedRole);
 
+      const { data: comps } = await supabase
+        .from("role_company_access")
+        .select("company_id")
+        .eq("role_id", selectedRole);
+
       setSelectedPerms(
-        (data || []).map((p: any) => p.permission_key)
+        (perms || []).map((p: any) => p.permission_key)
+      );
+
+      setSelectedCompanies(
+        (comps || []).map((c: any) => c.company_id)
       );
     }
 
-    loadRolePerms();
+    loadRoleData();
   }, [selectedRole]);
 
   /* ================= TOGGLE ================= */
@@ -115,6 +136,14 @@ export default function RolePermissionsPage() {
     );
   }
 
+  function toggleCompany(id: number) {
+    setSelectedCompanies((prev) =>
+      prev.includes(id)
+        ? prev.filter((c) => c !== id)
+        : [...prev, id]
+    );
+  }
+
   /* ================= SAVE ================= */
 
   async function save() {
@@ -122,16 +151,34 @@ export default function RolePermissionsPage() {
 
     setLoading(true);
 
+    // 1️⃣ permissions delete
     await supabase
       .from("role_permissions")
       .delete()
       .eq("role_id", selectedRole);
 
+    // 2️⃣ permissions insert
     if (selectedPerms.length > 0) {
       await supabase.from("role_permissions").insert(
         selectedPerms.map((key) => ({
           role_id: selectedRole,
           permission_key: key,
+        }))
+      );
+    }
+
+    // 3️⃣ companies delete
+    await supabase
+      .from("role_company_access")
+      .delete()
+      .eq("role_id", selectedRole);
+
+    // 4️⃣ companies insert
+    if (selectedCompanies.length > 0) {
+      await supabase.from("role_company_access").insert(
+        selectedCompanies.map((company_id) => ({
+          role_id: selectedRole,
+          company_id,
         }))
       );
     }
@@ -150,6 +197,13 @@ export default function RolePermissionsPage() {
         p.label.toLowerCase().includes(search.toLowerCase())
     );
   }, [permissions, search]);
+
+  const filteredCompanies = useMemo(() => {
+    if (!companySearch) return companies;
+    return companies.filter((c) =>
+      c.name.toLowerCase().includes(companySearch.toLowerCase())
+    );
+  }, [companies, companySearch]);
 
   /* ================= UI ================= */
 
@@ -172,36 +226,25 @@ export default function RolePermissionsPage() {
         </select>
       </div>
 
-      {/* PERMISSIONS CARD */}
+      {/* ================= PERMISSIONS ================= */}
       <div style={{ ...card, marginTop: 24 }}>
-
-        {/* 🔥 CLICKABLE HEADER */}
         <div
           onClick={() => setIsPermissionsOpen(!isPermissionsOpen)}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            cursor: "pointer",
-          }}
+          style={headerStyle}
         >
           <b>📌 Yetkilər</b>
-
           <ChevronDown
             size={18}
             style={{
               transition: "0.2s",
-              transform: isPermissionsOpen
-                ? "rotate(180deg)"
-                : "rotate(0deg)",
+              transform: isPermissionsOpen ? "rotate(180deg)" : "rotate(0deg)",
             }}
           />
         </div>
 
-        {/* 🔥 COLLAPSIBLE CONTENT */}
         {isPermissionsOpen && (
           <>
-            <span style={{ fontSize: 13, color: "#6b7280" }}>
+            <span style={counterText}>
               Seçilən: <b>{selectedPerms.length}</b> / {permissions.length}
             </span>
 
@@ -217,7 +260,6 @@ export default function RolePermissionsPage() {
                 const groupPerms = filtered.filter((p) =>
                   group.permissions.includes(p.key)
                 );
-
                 if (groupPerms.length === 0) return null;
 
                 const isOpen = openGroup === group.title;
@@ -228,18 +270,9 @@ export default function RolePermissionsPage() {
                       onClick={() =>
                         setOpenGroup(isOpen ? null : group.title)
                       }
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        cursor: "pointer",
-                        fontWeight: 900,
-                        fontSize: 14,
-                        padding: "8px 0",
-                      }}
+                      style={groupHeader}
                     >
                       {group.title}
-
                       <ChevronDown
                         size={16}
                         style={{
@@ -262,21 +295,13 @@ export default function RolePermissionsPage() {
                               key={perm.key}
                               onClick={() => toggle(perm.key)}
                               style={{
-                                padding: "10px 14px",
-                                borderRadius: 10,
-                                cursor: "pointer",
+                                ...itemBox,
                                 background: active
                                   ? "#dcfce7"
                                   : "#ffffff",
                                 border: active
                                   ? "1px solid #16a34a"
                                   : "1px solid #e5e7eb",
-                                marginBottom: 8,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                fontWeight: 700,
-                                fontSize: 13,
                               }}
                             >
                               <input
@@ -284,16 +309,9 @@ export default function RolePermissionsPage() {
                                 checked={active}
                                 readOnly
                               />
-
                               <div style={{ flex: 1 }}>
                                 {perm.label}
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    opacity: 0.6,
-                                    fontWeight: 400,
-                                  }}
-                                >
+                                <div style={keyText}>
                                   {perm.key}
                                 </div>
                               </div>
@@ -302,6 +320,72 @@ export default function RolePermissionsPage() {
                         })}
                       </div>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ================= COMPANY ACCESS ================= */}
+
+      <div style={{ ...card, marginTop: 24 }}>
+        <div
+          onClick={() => setIsCompaniesOpen(!isCompaniesOpen)}
+          style={headerStyle}
+        >
+          <b>🏢 Şirkət Yetkiləri</b>
+          <ChevronDown
+            size={18}
+            style={{
+              transition: "0.2s",
+              transform: isCompaniesOpen ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
+        </div>
+
+        {isCompaniesOpen && (
+          <>
+            <span style={counterText}>
+              Seçilən: <b>{selectedCompanies.length}</b> / {companies.length}
+            </span>
+
+            <input
+              placeholder="🔍 Şirkət axtar..."
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+              style={{ ...input, marginTop: 12 }}
+            />
+
+            <div style={{ marginTop: 16 }}>
+              {filteredCompanies.map((company) => {
+                const active =
+                  selectedCompanies.includes(company.id);
+
+                return (
+                  <div
+                    key={company.id}
+                    onClick={() => toggleCompany(company.id)}
+                    style={{
+                      ...itemBox,
+                      background: active ? "#dbeafe" : "#ffffff",
+                      border: active
+                        ? "1px solid #2563eb"
+                        : "1px solid #e5e7eb",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      readOnly
+                    />
+                    <div style={{ flex: 1 }}>
+                      {company.name}
+                      {/* <div style={keyText}>
+                        company_id: {company.id}
+                      </div> */}
+                    </div>
                   </div>
                 );
               })}
@@ -329,6 +413,46 @@ const card: React.CSSProperties = {
   borderRadius: 14,
   padding: 18,
   boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+};
+
+const headerStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  cursor: "pointer",
+};
+
+const groupHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
+  padding: "8px 0",
+};
+
+const itemBox: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  cursor: "pointer",
+  marginBottom: 8,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const keyText: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.6,
+  fontWeight: 400,
+};
+
+const counterText: React.CSSProperties = {
+  fontSize: 13,
+  color: "#6b7280",
 };
 
 const input: React.CSSProperties = {

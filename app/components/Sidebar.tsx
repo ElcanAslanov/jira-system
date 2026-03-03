@@ -128,17 +128,21 @@ export default function Sidebar() {
      LOAD PERMISSIONS + EMPLOYEE
   ==============================*/
 
-  useEffect(() => {
-    if (!user?.id) return;
+useEffect(() => {
+  if (!user?.id) return;
 
-    async function loadPermissions() {
+  let mounted = true;
+
+  async function loadPermissions() {
+    try {
+      // 🚀 EMPLOYEE-ni tez yüklə
       const { data: employee } = await supabase
         .from("employees")
         .select("ad,soyad,email,role_id")
         .eq("user_id", user.id)
         .single();
 
-      if (!employee?.role_id) return;
+      if (!employee?.role_id || !mounted) return;
 
       setEmployeeInfo({
         ad: employee.ad,
@@ -148,18 +152,23 @@ export default function Sidebar() {
 
       const roleId = employee.role_id;
 
-      const { data: rolePerms } = await supabase
-        .from("role_permissions")
-        .select("permission_key")
-        .eq("role_id", roleId);
+      // 🚀 Paralel permission query
+      const [rolePermRes, userPermRes] = await Promise.all([
+        supabase
+          .from("role_permissions")
+          .select("permission_key")
+          .eq("role_id", roleId),
+
+        supabase
+          .from("user_permissions")
+          .select("permission_key,allowed")
+          .eq("user_id", user.id),
+      ]);
 
       let finalPerms =
-        rolePerms?.map((x: any) => x.permission_key) || [];
+        rolePermRes.data?.map((x: any) => x.permission_key) || [];
 
-      const { data: userPerms } = await supabase
-        .from("user_permissions")
-        .select("permission_key,allowed")
-        .eq("user_id", user.id);
+      const userPerms = userPermRes.data;
 
       if (userPerms) {
         userPerms.forEach((p: any) => {
@@ -176,20 +185,28 @@ export default function Sidebar() {
         });
       }
 
-      setPermissions(finalPerms);
-    }
+      if (mounted) {
+        setPermissions(finalPerms);
+      }
 
-    loadPermissions();
-  }, [user?.id]);
+    } catch (err) {
+      console.error("Sidebar load error:", err);
+    }
+  }
+
+  loadPermissions();
+
+  return () => {
+    mounted = false;
+  };
+}, [user?.id]);
 
   /* =============================
      FILTER GROUPS
   ==============================*/
-
-  const visibleGroups = useMemo(() => {
+const visibleGroups = useMemo(() => {
   return groups
     .map((group) => {
-      // Dashboard group always visible
       if (group.key === "dashboards") {
         return group;
       }
@@ -229,7 +246,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 h-screen bg-gradient-to-b from-[#0f172a] to-[#111827] text-white flex flex-col shadow-xl">
+    <aside className="fixed top-0 left-0 w-64 h-screen bg-gradient-to-b from-[#0f172a] to-[#111827] text-white flex flex-col shadow-xl">
       <div className="px-6 py-6 border-b border-white/10">
         <h2 className="text-xl font-bold tracking-wide">
           Task Flow

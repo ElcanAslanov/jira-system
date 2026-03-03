@@ -24,56 +24,45 @@ export default function DashboardLayout({
   if (loading || !user) return null;
 
   return (
-<div className="h-screen flex bg-gray-100">      
-      {/* DESKTOP SIDEBAR */}
-      <div className="hidden lg:block">
+    <div className="min-h-screen bg-gray-100">
+
+      {/* ================= DESKTOP SIDEBAR (FIXED) ================= */}
+      <div className="hidden lg:block fixed top-0 left-0 h-screen w-64 z-40">
         <Sidebar />
       </div>
 
-      {/* MOBILE SIDEBAR */}
-      <div className="fixed inset-0 z-50 lg:hidden pointer-events-none">
-        
-        {/* Overlay */}
-        <div
-          onClick={() => setSidebarOpen(false)}
-          className={`
-            absolute inset-0 bg-black/40
-            transition-opacity duration-300
-            ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0"}
-          `}
-        />
+      {/* ================= MOBILE SIDEBAR ================= */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setSidebarOpen(false)}
+          />
 
-        {/* Sidebar Panel */}
-        <div
-          className={`
-            absolute left-0 top-0 w-72 h-full bg-slate-900 shadow-xl
-            transform transition-transform duration-300 ease-in-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-            pointer-events-auto
-          `}
-        >
-          <Sidebar />
+          <div className="absolute top-0 left-0 h-screen w-72 bg-slate-900 shadow-xl">
+            <Sidebar />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* MAIN AREA */}
-      <div className="flex-1 flex flex-col">
+      {/* ================= MAIN CONTENT ================= */}
+      <div className="flex flex-col min-h-screen lg:ml-64">
 
         {/* MOBILE MENU BUTTON */}
         <button
-          className="lg:hidden absolute top-4 left-4 text-2xl z-40"
+          className="lg:hidden fixed top-4 left-4 z-40 text-2xl"
           onClick={() => setSidebarOpen(true)}
         >
           ☰
         </button>
 
-        {/* NOTIFICATION (top-right, no navbar) */}
-        <div className="absolute top-4 right-6 z-40">
+        {/* NOTIFICATION */}
+        <div className="fixed top-4 right-6 z-40">
           <NotificationBell />
         </div>
 
-        {/* SCROLLABLE CONTENT */}
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* PAGE CONTENT */}
+        <main className="flex-1 p-6">
           {children}
         </main>
 

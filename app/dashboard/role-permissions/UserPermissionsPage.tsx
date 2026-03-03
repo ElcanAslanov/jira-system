@@ -17,21 +17,35 @@ type Permission = {
   label: string;
 };
 
+type Company = {
+  id: number;
+  name: string;
+};
+
 export default function UserPermissionsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+
   const [selectedUserId, setSelectedUserId] = useState("");
+
   const [rolePerms, setRolePerms] = useState<string[]>([]);
   const [userExtras, setUserExtras] = useState<string[]>([]);
   const [userDenies, setUserDenies] = useState<string[]>([]);
+
+  const [roleCompanies, setRoleCompanies] = useState<number[]>([]);
+  const [companyExtras, setCompanyExtras] = useState<number[]>([]);
+  const [companyDenies, setCompanyDenies] = useState<number[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [companySearch, setCompanySearch] = useState("");
+
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-
-  // 🔥 NEW: whole permission section toggle
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(true);
+  const [isCompaniesOpen, setIsCompaniesOpen] = useState(true);
 
-  /* ================= SIDEBAR ORDER ================= */
+  /* ================= SIDEBAR GROUPS ================= */
 
   const sidebarGroups = [
     {
@@ -82,8 +96,14 @@ export default function UserPermissionsPage() {
       .from("permissions")
       .select("key,label");
 
+    const { data: companyData } = await supabase
+      .from("companies")
+      .select("id,name")
+      .order("name");
+
     setUsers(usersData || []);
     setPermissions(permsData || []);
+    setCompanies(companyData || []);
 
     if (usersData?.length) {
       setSelectedUserId(usersData[0].user_id);
@@ -104,14 +124,28 @@ export default function UserPermissionsPage() {
   async function loadPermissions(roleId: string) {
     setLoading(true);
 
+    // ROLE PERMS
     const { data: roleData } = await supabase
       .from("role_permissions")
       .select("permission_key")
       .eq("role_id", roleId);
 
+    // USER PERMS
     const { data: userData } = await supabase
       .from("user_permissions")
       .select("permission_key,allowed")
+      .eq("user_id", selectedUserId);
+
+    // ROLE COMPANIES
+    const { data: roleCompData } = await supabase
+      .from("role_company_access")
+      .select("company_id")
+      .eq("role_id", roleId);
+
+    // USER COMPANIES
+    const { data: userCompData } = await supabase
+      .from("user_company_access")
+      .select("company_id,allowed")
       .eq("user_id", selectedUserId);
 
     setRolePerms(roleData?.map((x: any) => x.permission_key) || []);
@@ -126,6 +160,20 @@ export default function UserPermissionsPage() {
         .map((x: any) => x.permission_key) || []
     );
 
+    setRoleCompanies(
+      roleCompData?.map((x: any) => x.company_id) || []
+    );
+
+    setCompanyExtras(
+      userCompData?.filter((x: any) => x.allowed === true)
+        .map((x: any) => x.company_id) || []
+    );
+
+    setCompanyDenies(
+      userCompData?.filter((x: any) => x.allowed === false)
+        .map((x: any) => x.company_id) || []
+    );
+
     setLoading(false);
   }
 
@@ -137,6 +185,15 @@ export default function UserPermissionsPage() {
     userDenies.forEach((k) => base.delete(k));
     return Array.from(base);
   }, [rolePerms, userExtras, userDenies]);
+
+  /* ================= FINAL COMPANIES ================= */
+
+  const finalCompanies = useMemo(() => {
+    const base = new Set(roleCompanies);
+    companyExtras.forEach((c) => base.add(c));
+    companyDenies.forEach((c) => base.delete(c));
+    return Array.from(base);
+  }, [roleCompanies, companyExtras, companyDenies]);
 
   /* ================= TOGGLE ================= */
 
@@ -157,17 +214,35 @@ export default function UserPermissionsPage() {
     );
   }
 
+  function toggleCompany(id: number) {
+    const isInRole = roleCompanies.includes(id);
+    const isExtra = companyExtras.includes(id);
+    const isDenied = companyDenies.includes(id);
+
+    if (isInRole) {
+      setCompanyDenies((prev) =>
+        isDenied ? prev.filter((c) => c !== id) : [...prev, id]
+      );
+      return;
+    }
+
+    setCompanyExtras((prev) =>
+      isExtra ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  }
+
   /* ================= SAVE ================= */
 
   async function save() {
     setLoading(true);
 
+    // PERMISSIONS
     await supabase
       .from("user_permissions")
       .delete()
       .eq("user_id", selectedUserId);
 
-    const rows = [
+    const permRows = [
       ...userExtras.map((k) => ({
         user_id: selectedUserId,
         permission_key: k,
@@ -180,37 +255,50 @@ export default function UserPermissionsPage() {
       })),
     ];
 
-    if (rows.length > 0) {
-      await supabase.from("user_permissions").insert(rows);
+    if (permRows.length > 0) {
+      await supabase.from("user_permissions").insert(permRows);
     }
 
-    alert("User permissions saved ✅");
+    // COMPANIES
+    await supabase
+      .from("user_company_access")
+      .delete()
+      .eq("user_id", selectedUserId);
+
+    const companyRows = [
+      ...companyExtras.map((c) => ({
+        user_id: selectedUserId,
+        company_id: c,
+        allowed: true,
+      })),
+      ...companyDenies.map((c) => ({
+        user_id: selectedUserId,
+        company_id: c,
+        allowed: false,
+      })),
+    ];
+
+    if (companyRows.length > 0) {
+      await supabase.from("user_company_access").insert(companyRows);
+    }
+
+    alert("User permissions + company access saved ✅");
     setLoading(false);
   }
 
   /* ================= SEARCH ================= */
 
-  const filteredPerms = useMemo(() => {
-    if (!search) return permissions;
-    return permissions.filter(
-      (p) =>
-        p.key.toLowerCase().includes(search.toLowerCase()) ||
-        p.label.toLowerCase().includes(search.toLowerCase())
+  const filteredCompanies = useMemo(() => {
+    if (!companySearch) return companies;
+    return companies.filter((c) =>
+      c.name.toLowerCase().includes(companySearch.toLowerCase())
     );
-  }, [permissions, search]);
-
-  function getStatus(key: string) {
-    if (userDenies.includes(key)) return "DENY";
-    if (userExtras.includes(key)) return "EXTRA";
-    if (rolePerms.includes(key)) return "ROLE";
-    return "";
-  }
+  }, [companies, companySearch]);
 
   /* ================= UI ================= */
 
   return (
     <div style={{ padding: 28, maxWidth: 900 }}>
-      
       {/* USER SELECT */}
       <div style={{ ...card, marginTop: 20 }}>
         <b>User seç</b>
@@ -228,12 +316,136 @@ export default function UserPermissionsPage() {
         </select>
       </div>
 
-      {/* PERMISSIONS */}
-      <div style={{ ...card, marginTop: 24 }}>
+      {/* ================= PERMISSIONS ================= */}
 
-        {/* 🔥 CLICKABLE HEADER */}
+<div style={{ ...card, marginTop: 24 }}>
+  <div
+    onClick={() => setIsPermissionsOpen(!isPermissionsOpen)}
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      cursor: "pointer",
+    }}
+  >
+    <b>📌 Əsas Yetkilər</b>
+    <ChevronDown
+      size={18}
+      style={{
+        transition: "0.2s",
+        transform: isPermissionsOpen
+          ? "rotate(180deg)"
+          : "rotate(0deg)",
+      }}
+    />
+  </div>
+
+  {isPermissionsOpen && (
+    <>
+      <div style={{ marginTop: 16 }}>
+        {sidebarGroups.map((group) => {
+          const groupPerms = permissions.filter((p) =>
+            group.permissions.includes(p.key)
+          );
+
+          if (groupPerms.length === 0) return null;
+
+          const isOpen = openGroup === group.title;
+
+          return (
+            <div key={group.title} style={{ marginBottom: 16 }}>
+              <div
+                onClick={() =>
+                  setOpenGroup(isOpen ? null : group.title)
+                }
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  fontSize: 14,
+                  padding: "8px 0",
+                }}
+              >
+                {group.title}
+                <ChevronDown
+                  size={16}
+                  style={{
+                    transition: "0.2s",
+                    transform: isOpen
+                      ? "rotate(180deg)"
+                      : "rotate(0deg)",
+                  }}
+                />
+              </div>
+
+              {isOpen && (
+                <div style={{ marginTop: 8 }}>
+                  {groupPerms.map((perm) => {
+                    const active = finalPerms.includes(
+                      perm.key
+                    );
+
+                    return (
+                      <div
+                        key={perm.key}
+                        onClick={() =>
+                          togglePermission(perm.key)
+                        }
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          marginBottom: 8,
+                          cursor: "pointer",
+                          background: active
+                            ? "#dcfce7"
+                            : "#fff",
+                          border: active
+                            ? "1px solid #16a34a"
+                            : "1px solid #e5e7eb",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          fontWeight: 700,
+                          fontSize: 13,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          readOnly
+                        />
+                        <div>
+                          {perm.label}
+                          <div
+                            style={{
+                              fontSize: 11,
+                              opacity: 0.6,
+                              fontWeight: 400,
+                            }}
+                          >
+                            {perm.key}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  )}
+</div>
+
+      {/* ================= COMPANY ACCESS ================= */}
+
+      <div style={{ ...card, marginTop: 24 }}>
         <div
-          onClick={() => setIsPermissionsOpen(!isPermissionsOpen)}
+          onClick={() => setIsCompaniesOpen(!isCompaniesOpen)}
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -241,160 +453,57 @@ export default function UserPermissionsPage() {
             cursor: "pointer",
           }}
         >
-          <b>📌 Yetkilər</b>
-
+          <b>🏢 Şirkət Yetkiləri</b>
           <ChevronDown
             size={18}
             style={{
               transition: "0.2s",
-              transform: isPermissionsOpen
+              transform: isCompaniesOpen
                 ? "rotate(180deg)"
                 : "rotate(0deg)",
             }}
           />
         </div>
 
-        {/* 🔥 COLLAPSIBLE CONTENT */}
-        {isPermissionsOpen && (
+        {isCompaniesOpen && (
           <>
             <input
-              placeholder="🔍 Axtar..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              placeholder="🔍 Şirkət axtar..."
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
               style={{ ...input, marginTop: 12 }}
             />
 
-            <div style={{ marginTop: 20 }}>
-              {sidebarGroups.map((group) => {
-                const groupPerms = filteredPerms.filter((p) =>
-                  group.permissions.includes(p.key)
-                );
-
-                if (groupPerms.length === 0) return null;
-
-                const isOpen = openGroup === group.title;
+            <div style={{ marginTop: 16 }}>
+              {filteredCompanies.map((company) => {
+                const active = finalCompanies.includes(company.id);
 
                 return (
-                  <div key={group.title} style={{ marginBottom: 16 }}>
-                    <div
-                      onClick={() =>
-                        setOpenGroup(isOpen ? null : group.title)
-                      }
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        cursor: "pointer",
-                        fontWeight: 900,
-                        fontSize: 14,
-                        padding: "8px 0",
-                      }}
-                    >
-                      {group.title}
-
-                      <ChevronDown
-                        size={16}
-                        style={{
-                          transition: "0.2s",
-                          transform: isOpen
-                            ? "rotate(180deg)"
-                            : "rotate(0deg)",
-                        }}
-                      />
-                    </div>
-
-                    {isOpen && (
-                      <div style={{ marginTop: 8 }}>
-                        {groupPerms.map((perm) => {
-                          const status = getStatus(perm.key);
-                          const active =
-                            finalPerms.includes(perm.key);
-
-                          let bg = "#fff";
-                          let border = "1px solid #e5e7eb";
-                          let color = "#111";
-
-                          if (status === "ROLE") {
-                            bg = "#e0f2fe";
-                            border = "1px solid #0284c7";
-                          }
-                          if (status === "EXTRA") {
-                            bg = "#dcfce7";
-                            border = "1px solid #16a34a";
-                          }
-                          if (status === "DENY") {
-                            bg = "#fee2e2";
-                            border = "1px solid #dc2626";
-                            color = "#991b1b";
-                          }
-
-                          return (
-                            <div
-                              key={perm.key}
-                              onClick={() =>
-                                togglePermission(perm.key)
-                              }
-                              style={{
-                                padding: "10px 14px",
-                                borderRadius: 10,
-                                marginBottom: 8,
-                                cursor: "pointer",
-                                background: bg,
-                                border,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                fontWeight: 700,
-                                fontSize: 13,
-                                color,
-                                textDecoration:
-                                  status === "DENY"
-                                    ? "line-through"
-                                    : "none",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={active}
-                                readOnly
-                              />
-
-                              <div style={{ flex: 1 }}>
-                                {perm.label}
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    opacity: 0.6,
-                                    fontWeight: 400,
-                                  }}
-                                >
-                                  {perm.key}
-                                </div>
-                              </div>
-
-                              {status && (
-                                <span
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 900,
-                                    padding: "4px 8px",
-                                    borderRadius: 999,
-                                    background:
-                                      status === "ROLE"
-                                        ? "#bae6fd"
-                                        : status === "EXTRA"
-                                        ? "#bbf7d0"
-                                        : "#fecaca",
-                                  }}
-                                >
-                                  {status}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                  <div
+                    key={company.id}
+                    onClick={() => toggleCompany(company.id)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      marginBottom: 8,
+                      cursor: "pointer",
+                      background: active ? "#dbeafe" : "#fff",
+                      border: active
+                        ? "1px solid #2563eb"
+                        : "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      fontWeight: 700,
+                      fontSize: 13,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      readOnly
+                    />
+                    {company.name}
                   </div>
                 );
               })}
