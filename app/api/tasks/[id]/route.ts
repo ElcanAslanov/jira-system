@@ -17,30 +17,63 @@ async function getRequestUser(req: NextRequest) {
   const { data: authData, error: authError } =
     await supabaseAdmin.auth.getUser(token);
 
-  if (authError || !authData?.user)
-    throw new Error("Unauthorized");
+  if (authError || !authData?.user) throw new Error("Unauthorized");
 
-  const { data: employee, error: empError } =
-    await supabaseAdmin
-      .from("employees")
-      .select("id, role_id")
-      .eq("user_id", authData.user.id)
-      .single();
+  const { data: employee, error: empError } = await supabaseAdmin
+    .from("employees")
+    .select("id, role_id")
+    .eq("user_id", authData.user.id)
+    .single();
 
-  if (empError || !employee)
-    throw new Error("Employee not found");
+  if (empError || !employee) throw new Error("Employee not found");
 
-  const { data: roleRow } =
-    await supabaseAdmin
-      .from("roles")
-      .select("name")
-      .eq("id", employee.role_id)
-      .single();
+  const { data: roleRow, error: roleErr } = await supabaseAdmin
+    .from("roles")
+    .select("name")
+    .eq("id", employee.role_id)
+    .single();
+
+  if (roleErr) throw roleErr;
+
+  // ===== ROLE PERMS =====
+  const { data: rolePerms, error: rolePermErr } = await supabaseAdmin
+    .from("role_permissions")
+    .select("permission_key")
+    .eq("role_id", employee.role_id);
+
+  if (rolePermErr) throw rolePermErr;
+
+  // ===== USER OVERRIDES (EXTRA/DENY) =====
+  const { data: userPerms, error: userPermErr } = await supabaseAdmin
+    .from("user_permissions")
+    .select("permission_key, allowed")
+    .eq("user_id", employee.id);
+
+  if (userPermErr) throw userPermErr;
+
+  let permissions = rolePerms?.map((p: any) => p.permission_key) ?? [];
+
+  if (userPerms?.length) {
+    userPerms.forEach((p: any) => {
+      if (p.allowed === true && !permissions.includes(p.permission_key)) {
+        permissions.push(p.permission_key);
+      }
+      if (p.allowed === false) {
+        permissions = permissions.filter((k) => k !== p.permission_key);
+      }
+    });
+  }
 
   return {
     id: employee.id,
+    role_id: employee.role_id,
     role: String(roleRow?.name || "").toUpperCase(),
+    permissions,
   };
+}
+
+function hasAnyPermission(user: { permissions: string[] }, keys: string[]) {
+  return keys.some((k) => user.permissions.includes(k));
 }
 
 /* ================= PUT ================= */
@@ -54,44 +87,64 @@ export async function PUT(
     const user = await getRequestUser(request);
     const body = await request.json().catch(() => ({}));
 
-    const { data: task } = await supabaseAdmin
+    const { data: task, error: taskErr } = await supabaseAdmin
       .from("tasks")
       .select("*")
       .eq("id", taskId)
       .single();
 
+    if (taskErr) throw taskErr;
     if (!task) throw new Error("Task not found");
 
+    // ===== PERMISSION CHECK (EDIT) =====
+    const canEdit =
+      ["ADMIN", "BOSS"].includes(user.role) ||
+      hasAnyPermission(user, ["tasks.edit.list", "tasks.edit.drawer"]);
+
+    if (!canEdit) {
+      return NextResponse.json(
+        { error: "Permission denied (edit)" },
+        { status: 403 }
+      );
+    }
+
+    // DONE only ADMIN can change
     if (task.status === "DONE" && user.role !== "ADMIN") {
-      throw new Error("DONE tapşırıqları yalnız ADMIN dəyişə bilər");
+      return NextResponse.json(
+        { error: "DONE tapşırıqları yalnız ADMIN dəyişə bilər" },
+        { status: 403 }
+      );
     }
 
     /* ================= EMPLOYEE ================= */
-
+    // EMPLOYEE: only if assigned
     if (user.role === "EMPLOYEE") {
-      const { data: assigned } = await supabaseAdmin
+      const { data: assigned, error: asgErr } = await supabaseAdmin
         .from("task_assignees")
         .select("id")
         .eq("task_id", taskId)
         .eq("employee_id", user.id)
         .maybeSingle();
 
-      if (!assigned) throw new Error("Permission denied");
+      if (asgErr) throw asgErr;
+      if (!assigned) {
+        return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+      }
 
       const newStatus = body.status ?? task.status;
 
-      await supabaseAdmin
+      const { error: upErr } = await supabaseAdmin
         .from("tasks")
         .update({
           status: newStatus,
           sort_index:
-            body.sort_index !== undefined
-              ? body.sort_index
-              : task.sort_index,
+            body.sort_index !== undefined ? body.sort_index : task.sort_index,
         })
         .eq("id", taskId);
 
-      // Creator-a notification (özündən fərqlidirsə)
+      if (upErr) throw upErr;
+
+      // Creator notification (if different)
       if (newStatus !== task.status && task.created_by !== user.id) {
         await supabaseAdmin.from("notifications").insert({
           user_id: task.created_by,
@@ -106,58 +159,62 @@ export async function PUT(
     }
 
     /* ================= REHBER ================= */
-
+    // REHBER: must have access to team task or own-created
     if (user.role === "REHBER") {
-      const { data: team } = await supabaseAdmin
+      const { data: team, error: teamErr } = await supabaseAdmin
         .from("employee_guides")
         .select("employee_id")
         .eq("guide_id", user.id);
 
+      if (teamErr) throw teamErr;
+
       const teamIds = team?.map((t) => t.employee_id) ?? [];
 
-      const { data: assigned } = await supabaseAdmin
+      const { data: assigned, error: assignedErr } = await supabaseAdmin
         .from("task_assignees")
         .select("employee_id")
         .eq("task_id", taskId);
 
-      const hasAccess = assigned?.some((a) =>
-        teamIds.includes(a.employee_id)
-      );
+      if (assignedErr) throw assignedErr;
 
-      if (!hasAccess) throw new Error("Permission denied");
+      const hasAccess =
+        task.created_by === user.id ||
+        assigned?.some((a) => teamIds.includes(a.employee_id));
+
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+      }
     }
 
-    /* ================= ADMIN / BOSS ================= */
+    /* ================= ADMIN / BOSS / REHBER (allowed) ================= */
 
     const updateFields: Record<string, any> = {};
 
-    if (body.status !== undefined)
-      updateFields.status = body.status;
-    if (body.priority !== undefined)
-      updateFields.priority = body.priority;
-    if (body.sort_index !== undefined)
-      updateFields.sort_index = body.sort_index;
-    if (body.title !== undefined)
-      updateFields.title = body.title;
-    if (body.description !== undefined)
-      updateFields.description = body.description;
-    if (body.due_date !== undefined)
-      updateFields.due_date = body.due_date;
+    if (body.status !== undefined) updateFields.status = body.status;
+    if (body.priority !== undefined) updateFields.priority = body.priority;
+    if (body.sort_index !== undefined) updateFields.sort_index = body.sort_index;
+    if (body.title !== undefined) updateFields.title = body.title;
+    if (body.description !== undefined) updateFields.description = body.description;
+    if (body.due_date !== undefined) updateFields.due_date = body.due_date;
+    if (body.start_date !== undefined) updateFields.start_date = body.start_date;
 
     if (Object.keys(updateFields).length > 0) {
-      await supabaseAdmin
+      const { error: upErr } = await supabaseAdmin
         .from("tasks")
         .update(updateFields)
         .eq("id", taskId);
+
+      if (upErr) throw upErr;
     }
 
-    /* ================= STATUS CHANGE ================= */
-
+    /* ================= STATUS CHANGE NOTIF ================= */
     if (body.status && body.status !== task.status) {
-      const { data: assignees } = await supabaseAdmin
+      const { data: assignees, error: asgErr } = await supabaseAdmin
         .from("task_assignees")
         .select("employee_id")
         .eq("task_id", taskId);
+
+      if (asgErr) throw asgErr;
 
       if (assignees?.length) {
         await supabaseAdmin.from("notifications").insert(
@@ -175,33 +232,39 @@ export async function PUT(
     }
 
     /* ================= ASSIGN CHANGE ================= */
-
     if (body.assigned_ids) {
-      const { data: oldRows } = await supabaseAdmin
+      const { data: oldRows, error: oldErr } = await supabaseAdmin
         .from("task_assignees")
         .select("employee_id")
         .eq("task_id", taskId);
 
+      if (oldErr) throw oldErr;
+
       const oldIds = oldRows?.map((r) => r.employee_id) ?? [];
-      const newIds: string[] = body.assigned_ids;
+      const newIds: string[] = Array.isArray(body.assigned_ids) ? body.assigned_ids : [];
 
       const added = newIds.filter((id) => !oldIds.includes(id));
 
-      // əvvəl köhnələri sil
-      await supabaseAdmin
+      // delete old
+      const { error: delErr } = await supabaseAdmin
         .from("task_assignees")
         .delete()
         .eq("task_id", taskId);
 
-      // yeniləri insert et
-      await supabaseAdmin.from("task_assignees").insert(
-        newIds.map((empId) => ({
-          task_id: taskId,
-          employee_id: empId,
-        }))
-      );
+      if (delErr) throw delErr;
 
-      // yalnız əlavə olunanlara notification
+      // insert new
+      if (newIds.length) {
+        const { error: insErr } = await supabaseAdmin.from("task_assignees").insert(
+          newIds.map((empId) => ({
+            task_id: taskId,
+            employee_id: empId,
+          }))
+        );
+        if (insErr) throw insErr;
+      }
+
+      // notify only added
       if (added.length > 0) {
         await supabaseAdmin.from("notifications").insert(
           added
@@ -218,12 +281,11 @@ export async function PUT(
     }
 
     return NextResponse.json({ success: true });
-
   } catch (e: any) {
     console.error("TASK UPDATE ERROR:", e);
     return NextResponse.json(
       { error: e?.message || "Server error" },
-      { status: 400 }
+      { status: e?.message?.includes("Unauthorized") ? 401 : 400 }
     );
   }
 }
@@ -238,48 +300,75 @@ export async function DELETE(
     const { id: taskId } = await context.params;
     const user = await getRequestUser(request);
 
-    const { data: task } = await supabaseAdmin
+    const { data: task, error: taskErr } = await supabaseAdmin
       .from("tasks")
       .select("id, created_by")
       .eq("id", taskId)
       .single();
 
+    if (taskErr) throw taskErr;
     if (!task) throw new Error("Task not found");
 
-    // 🔒 EMPLOYEE yalnız öz taskını silə bilməsin
-    if (user.role === "EMPLOYEE") {
-      throw new Error("Permission denied");
+    // ===== PERMISSION CHECK (DELETE) =====
+    const canDelete =
+      ["ADMIN", "BOSS"].includes(user.role) ||
+      hasAnyPermission(user, ["tasks.delete.list", "tasks.delete.drawer"]);
+
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: "Permission denied (delete)" },
+        { status: 403 }
+      );
     }
 
-    // 🔒 REHBER yalnız komandasının taskını silə bilər (istəsən əlavə edə bilərik)
+    // EMPLOYEE cannot delete
+    if (user.role === "EMPLOYEE") {
+      return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+    }
 
-    // 1️⃣ əvvəl assignees sil
-    await supabaseAdmin
-      .from("task_assignees")
-      .delete()
-      .eq("task_id", taskId);
+    // Optional: REHBER only team or own-created
+    if (user.role === "REHBER") {
+      const { data: team, error: teamErr } = await supabaseAdmin
+        .from("employee_guides")
+        .select("employee_id")
+        .eq("guide_id", user.id);
 
-    // 2️⃣ notification sil (istəyə görə)
-    await supabaseAdmin
-      .from("notifications")
-      .delete()
-      .eq("task_id", taskId);
+      if (teamErr) throw teamErr;
 
-    // 3️⃣ task sil
-    const { error } = await supabaseAdmin
-      .from("tasks")
-      .delete()
-      .eq("id", taskId);
+      const teamIds = team?.map((t) => t.employee_id) ?? [];
 
+      const { data: assigned, error: asgErr } = await supabaseAdmin
+        .from("task_assignees")
+        .select("employee_id")
+        .eq("task_id", taskId);
+
+      if (asgErr) throw asgErr;
+
+      const hasAccess =
+        task.created_by === user.id ||
+        assigned?.some((a) => teamIds.includes(a.employee_id));
+
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+      }
+    }
+
+    // 1) delete assignees
+    await supabaseAdmin.from("task_assignees").delete().eq("task_id", taskId);
+
+    // 2) delete notifications related to task
+    await supabaseAdmin.from("notifications").delete().eq("task_id", taskId);
+
+    // 3) delete task
+    const { error } = await supabaseAdmin.from("tasks").delete().eq("id", taskId);
     if (error) throw error;
 
     return NextResponse.json({ success: true });
-
   } catch (e: any) {
     console.error("TASK DELETE ERROR:", e);
     return NextResponse.json(
       { error: e?.message || "Delete failed" },
-      { status: 400 }
+      { status: e?.message?.includes("Unauthorized") ? 401 : 400 }
     );
   }
 }

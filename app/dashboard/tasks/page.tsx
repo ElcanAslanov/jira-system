@@ -318,6 +318,7 @@ export default function TasksPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
   const { user, loading } = useUser();
+  const [permissions, setPermissions] = useState<string[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -477,6 +478,47 @@ export default function TasksPage() {
 
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  useEffect(() => {
+  if (!user?.id) return;
+
+  async function loadPermissions() {
+    // 🔹 Role permissions
+    const { data: rolePerms } = await supabase
+      .from("role_permissions")
+      .select("permission_key")
+      .eq("role_id", (user as any)?.role_id);
+
+    // 🔹 User override permissions
+    const { data: userPerms } = await supabase
+      .from("user_permissions")
+      .select("permission_key, allowed")
+      .eq("user_id", user.id);
+
+    let finalPerms =
+      rolePerms?.map((p: any) => p.permission_key) || [];
+
+    // 🔹 Override logic (EXTRA / DENY)
+    if (userPerms) {
+      userPerms.forEach((p: any) => {
+        if (p.allowed === true && !finalPerms.includes(p.permission_key)) {
+          finalPerms.push(p.permission_key);
+        }
+        if (p.allowed === false) {
+          finalPerms = finalPerms.filter(
+            (k) => k !== p.permission_key
+          );
+        }
+      });
+    }
+
+    setPermissions(finalPerms);
+  }
+
+  loadPermissions();
+}, [user]);
+
+const can = (key: string) => permissions.includes(key);
 
 
   const paginatedTasks = useMemo(() => {
@@ -1003,7 +1045,7 @@ export default function TasksPage() {
 
 
         <div className="flex items-center gap-3">
-
+{can("tasks.export.list") && (
           <button
             onClick={async () => {
               if (!filteredFlat.length) return;
@@ -1039,13 +1081,15 @@ export default function TasksPage() {
           >
             Export
           </button>
-
+)}
+{can("tasks.print.list") && (
           <button
             onClick={() => window.print()}
             className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
           >
             Print
           </button>
+)}
         </div>
       </div>
 
@@ -1069,6 +1113,7 @@ export default function TasksPage() {
                   id={col.id}
                   title={col.id}
                   tasks={col.tasks}
+                  can={can}
                   onSelect={(task) => {
                     setViewTask(task);
                     setDrawerOpen(true);
@@ -1355,14 +1400,15 @@ export default function TasksPage() {
                             </span>
                           ) : null}
                         </div>
-
+{can("tasks.edit.list") && (
                         <button
                           onClick={() => setSelectedTask(t)}
                           className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
                         >
                           Edit
                         </button>
-
+)}
+{can("tasks.delete.list") && (
                         <button
                           onClick={async () => {
                             if (!confirm("Bu tapşırıq silinsin?")) return;
@@ -1395,6 +1441,7 @@ export default function TasksPage() {
                         >
                           Sil
                         </button>
+)}
                       </td>
                     </tr>
                   ))}
@@ -1466,13 +1513,15 @@ export default function TasksPage() {
                         </span>
                       ) : null}
                     </div>
+                    {can("tasks.edit.list") && (
                     <button
                       onClick={() => setSelectedTask(t)}
                       className="flex-1 border px-3 py-2 rounded-lg text-sm"
                     >
                       Edit
                     </button>
-
+                    )}
+{can("tasks.delete.list") && (
                     <button
                       onClick={async () => {
                         if (!confirm("Bu tapşırıq silinsin?")) return;
@@ -1503,6 +1552,7 @@ export default function TasksPage() {
                     >
                       Sil
                     </button>
+)}
                   </div>
                 </div>
               ))}
@@ -1674,6 +1724,7 @@ export default function TasksPage() {
 
               <div style={{ display: "flex", gap: 8 }}>
                 {/* EXPORT */}
+                {can("tasks.export.drawer") && (
                 <button
                   onClick={async () => {
                     try {
@@ -1720,8 +1771,10 @@ export default function TasksPage() {
                 >
                   Export
                 </button>
+                )}
 
                 {/* PRINT */}
+                {can("tasks.print.drawer") && (
                 <button
                   onClick={() => window.print()}
                   style={{
@@ -1734,7 +1787,8 @@ export default function TasksPage() {
                 >
                   Print
                 </button>
-
+                )}
+{can("tasks.edit.drawer") && (
                 <button
                   onClick={() => {
                     setDrawerOpen(false);
@@ -1754,7 +1808,8 @@ export default function TasksPage() {
                 >
                   Edit
                 </button>
-
+)}
+{can("tasks.delete.drawer") && (
                 <button
                   onClick={async () => {
                     if (!confirm("Bu tapşırıq silinsin?")) return;
@@ -1795,6 +1850,7 @@ export default function TasksPage() {
                 >
                   Delete
                 </button>
+)}
 
                 <button
                   onClick={() => {
@@ -2324,11 +2380,13 @@ const Column = React.memo(function Column({
   title,
   tasks,
   onSelect,
+  can,
 }: {
   id: Status;
   title: string;
   tasks: Task[];
   onSelect: (t: Task) => void;
+  can: (key: string) => boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -2374,7 +2432,12 @@ const Column = React.memo(function Column({
       >
         <div className="space-y-4 overflow-y-auto pr-1 flex-1">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onSelect={onSelect} />
+            <TaskCard
+  key={task.id}
+  task={task}
+  onSelect={onSelect}
+  can={can}
+/>
           ))}
         </div>
       </SortableContext>
@@ -2387,9 +2450,11 @@ const Column = React.memo(function Column({
 const TaskCard = React.memo(function TaskCard({
   task,
   onSelect,
+  can,
 }: {
   task: Task;
   onSelect: (t: Task) => void;
+  can: (key: string) => boolean;
 }) {
   const isDone = task.status === "DONE";
 
@@ -2402,7 +2467,7 @@ const TaskCard = React.memo(function TaskCard({
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: isDone,
+    disabled: isDone || !can("tasks.edit.list"),
   });
 
   return (

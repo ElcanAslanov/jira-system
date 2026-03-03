@@ -51,9 +51,28 @@ export default function RolePermissionsPage() {
       ],
     },
     {
-      title: "Tapşırıqlar",
-      permissions: ["tasks.view", "tasks.create"],
-    },
+  title: "Tapşırıqlar",
+  permissions: [
+    "tasks.view",
+    "tasks.create",
+  ],
+},
+{
+  title: "Tapşırıq Button Yetkiləri",
+  permissions: [
+    // LIST / BOARD BUTTONS
+    "tasks.edit.list",
+    "tasks.delete.list",
+    "tasks.export.list",
+    "tasks.print.list",
+
+    // DRAWER BUTTONS
+    "tasks.edit.drawer",
+    "tasks.delete.drawer",
+    "tasks.export.drawer",
+    "tasks.print.drawer",
+  ],
+},
     {
       title: "Dövrlü Tapşırıqlar",
       permissions: ["recurring.view", "recurring.create"],
