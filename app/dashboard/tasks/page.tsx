@@ -33,6 +33,7 @@ import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import { useSearchParams } from "next/navigation";
 import Calendar from "antd/es/calendar";
+import { createPortal } from "react-dom"
 
 
 
@@ -159,12 +160,116 @@ function PriorityPill({ p }: { p: string }) {
   return <span className={`${base} ${cls}`}>{p}</span>;
 }
 
+function StatusBadge({ status }: { status: string }) {
+  const base =
+    "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border";
+
+  const map: Record<string, string> = {
+    TODO: "bg-gray-100 text-gray-700 border-gray-200",
+    IN_PROGRESS: "bg-blue-100 text-blue-700 border-blue-200",
+    DONE: "bg-green-100 text-green-700 border-green-200",
+    CANCELLED: "bg-red-100 text-red-700 border-red-200",
+  };
+
+  const cls = map[status] ?? "bg-slate-100 text-slate-700 border-slate-200";
+
+  return (
+    <span className={`${base} ${cls}`}>
+      {status.replace("_", " ")}
+    </span>
+  );
+}
+
+function UserBadge({
+  userId,
+  users,
+}: {
+  userId: string;
+  users: UserInfo[];
+}) {
+  const user =
+    users.find((u) => u.id === userId) ||
+    users.find((u) => u.name === userId);
+
+  const [hovered, setHovered] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!hovered || !ref.current) return;
+
+    const rect = ref.current.getBoundingClientRect();
+
+    setPos({
+      top: rect.top - 10,
+      left: rect.left + rect.width / 2,
+    });
+  }, [hovered]);
+
+  if (!user) {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 border">
+        👤 {userId}
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <span
+        ref={ref}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-pointer"
+      >
+        👤 {user.name}
+      </span>
+
+      {hovered &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              transform: "translate(-50%, -100%)",
+              zIndex: 999999,
+            }}
+            className="bg-slate-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl min-w-[200px]"
+          >
+            <div className="space-y-1">
+              <div className="font-semibold">{user.name}</div>
+              <div className="text-gray-300">{user.email}</div>
+              <div className="border-t border-gray-700 my-1" />
+              <div className="text-gray-300">{user.company}</div>
+              <div className="text-gray-300">{user.department}</div>
+              <div className="text-indigo-300 font-semibold">
+                {user.role}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+type UserInfo = {
+  id: string;
+  name: string;
+  email?: string | null;
+  role?: string | null;
+  company?: string | null;
+  department?: string | null;
+};
+
+
+
 export default function TasksPage() {
 
   const searchParams = useSearchParams();
   const openTaskId = searchParams.get("open");
   const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
-  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [users, setUsers] = useState<UserInfo[]>([]);
 
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   // COMMENTS STATE
@@ -421,6 +526,11 @@ export default function TasksPage() {
       (data.employees || []).map((u: any) => ({
         id: u.id,
         name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
+        email: u.email ?? null,
+
+        role: u.positions?.name ?? null,
+        company: u.companies?.name ?? null,
+        department: u.departments?.name ?? null,
       })) || [];
 
     setUsers(mapped);
@@ -1002,13 +1112,9 @@ export default function TasksPage() {
                 setAssignedFilter(vals);
                 setPage(1);
               }}
-              options={[
-                ...new Set(
-                  rawTasks.flatMap((t) => t.assigned_to ?? [])
-                ),
-              ].map((u) => ({
-                value: u,
-                label: u,
+              options={users.map((u) => ({
+                value: u.id,
+                label: u.name,
               }))}
             />
 
@@ -1072,7 +1178,7 @@ export default function TasksPage() {
 
           {/* TABLE + PAGINATION */}
           {/* TABLE + PAGINATION */}
-          <div className="bg-white rounded-2xl shadow border overflow-hidden">
+          <div className="bg-white rounded-2xl shadow border">
 
             {/* HEADER */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b bg-gray-50 gap-2">
@@ -1128,7 +1234,17 @@ export default function TasksPage() {
                       <td className="p-3"><PriorityPill p={String(t.priority)} /></td>
                       <td className="p-3">{formatDMY(t.start_date)}</td>
                       <td className="p-3">{formatDMY(t.due_date)}</td>
-                      <td className="p-3">{(t.assigned_to ?? []).join(", ") || "-"}</td>
+                      <td className="p-3">
+                        {t.assigned_to?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {t.assigned_to.map((u, i) => (
+                              <UserBadge key={i} userId={u} users={users} />
+                            ))}
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
                       <td className="p-3 text-right space-x-2">
                         <div className="relative inline-block">
                           <button
@@ -1226,7 +1342,18 @@ export default function TasksPage() {
                     <div>Status: {t.status}</div>
                     <div>Start: {formatDMY(t.start_date)}</div>
                     <div>Due: {formatDMY(t.due_date)}</div>
-                    <div>Assigned: {(t.assigned_to ?? []).join(", ") || "-"}</div>
+                    <div>
+                      Assigned:
+                      {t.assigned_to?.length ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {t.assigned_to.map((u, i) => (
+                            <UserBadge key={i} userId={u} users={users} />
+                          ))}
+                        </div>
+                      ) : (
+                        " -"
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-4 flex gap-2">
@@ -1611,12 +1738,20 @@ export default function TasksPage() {
 
               <DrawerRow
                 label="Status"
-                value={viewTask.status.replace("_", " ")}
+                value={
+                  <div className="cursor-pointer inline-block hover:opacity-80 transition">
+                    <StatusBadge status={viewTask.status} />
+                  </div>
+                }
               />
 
               <DrawerRow
                 label="Prioritet"
-                value={<PriorityPill p={String(viewTask.priority)} />}
+                value={
+                  <div className="cursor-pointer inline-block hover:opacity-80 transition">
+                    <PriorityPill p={String(viewTask.priority)} />
+                  </div>
+                }
               />
 
               <DrawerRow
@@ -1632,15 +1767,25 @@ export default function TasksPage() {
               <DrawerRow
                 label="Təyin olunan"
                 value={
-                  viewTask.assigned_to?.length
-                    ? viewTask.assigned_to.join(", ")
-                    : "-"
+                  viewTask.assigned_to?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {viewTask.assigned_to.map((u, i) => (
+                        <UserBadge key={i} userId={u} users={users} />
+                      ))}
+                    </div>
+                  ) : "-"
                 }
               />
 
               <DrawerRow
                 label="Yaradan"
-                value={viewTask.creator_name ?? "-"}
+                value={
+                  viewTask.created_by ? (
+                    <UserBadge userId={viewTask.created_by} users={users} />
+                  ) : viewTask.creator_name ? (
+                    <span>{viewTask.creator_name}</span>
+                  ) : "-"
+                }
               />
 
               <DrawerRow
@@ -1902,6 +2047,7 @@ export default function TasksPage() {
       {/* CREATE MODAL */}
       {createOpen ? (
         <CreateTaskModal
+          users={users}   // 👈 BUNU ƏLAVƏ ET
           onClose={() => setCreateOpen(false)}
           onCreate={async (payload) => {
             // optimistic add into TODO end
@@ -2264,7 +2410,7 @@ const TaskCard = React.memo(function TaskCard({
 /* EDIT DRAWER */
 type EditDrawerProps = {
   task: Task;
-  users: { id: string; name: string }[];
+  users: UserInfo[];
   onClose: () => void;
   onSave: (updates: Partial<Task>) => Promise<void> | void;
 };
@@ -2535,9 +2681,11 @@ function CalendarView({
 
 /* CREATE MODAL */
 function CreateTaskModal({
+  users,
   onClose,
   onCreate,
 }: {
+  users: UserInfo[];
   onClose: () => void;
   onCreate: (payload: Partial<Task>) => Promise<void> | void;
 }) {
@@ -2655,23 +2803,22 @@ function CreateTaskModal({
                 Assigned to
               </label>
 
-              <input
-                className="w-full border rounded-lg px-3 py-2"
-                value={(form.assigned_to ?? []).join(", ")}
-                onChange={(e) => {
-                  const val = e.target.value;
-
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="User seç"
+                className="w-full"
+                value={(form.assigned_to ?? []) as string[]}
+                onChange={(vals) =>
                   setForm((p) => ({
                     ...p,
-                    assigned_to: val
-                      ? val
-                        .split(",")
-                        .map((v) => v.trim())
-                        .filter(Boolean)
-                      : null,
-                  }));
-                }}
-                placeholder="name1, name2"
+                    assigned_to: vals,
+                  }))
+                }
+                options={users.map((u) => ({
+                  value: u.id,
+                  label: u.name,
+                }))}
               />
             </div>
           </div>
