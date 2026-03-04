@@ -102,12 +102,9 @@ export async function POST(
 
     const hasAccess = await checkTaskAccess(taskId, user);
 
-    if (!hasAccess) {
-      return NextResponse.json(
-        { error: "Permission denied" },
-        { status: 403 }
-      );
-    }
+   if (!hasAccess) {
+  return NextResponse.json({ success: true });
+}
 
     /* ===== GET TASK COMMENTS ===== */
 

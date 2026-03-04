@@ -516,7 +516,7 @@ export default function TasksPage() {
   }
 
   loadPermissions();
-}, [user]);
+}, [user?.id]);
 
 const can = (key: string) => permissions.includes(key);
 
@@ -538,8 +538,8 @@ const can = (key: string) => permissions.includes(key);
   }, []);
 
   const getToken = useCallback(async () => {
-    const session = await supabase.auth.getSession();
-    return session.data.session?.access_token ?? null;
+   const { data } = await supabase.auth.getSession();
+return data.session?.access_token ?? null;
   }, []);
 
   const loadTasks = useCallback(async () => {
@@ -677,16 +677,12 @@ const can = (key: string) => permissions.includes(key);
     [getToken, user?.id, user]
   );
 
-  useEffect(() => {
-    if (!loading && user) loadTasks();
-  }, [loading, user, loadTasks]);
-
-  useEffect(() => {
-    if (!loading && user) {
-      loadTasks();
-      loadUsers();
-    }
-  }, [loading, user, loadTasks, loadUsers]);
+ useEffect(() => {
+  if (!loading && user) {
+    loadTasks();
+    loadUsers();
+  }
+}, [loading, user]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -712,7 +708,7 @@ const can = (key: string) => permissions.includes(key);
     return () => {
       channel.unsubscribe();
     };
-  }, [user, loadTasks]);
+}, [user?.id]);
 
   useEffect(() => {
     const channel = supabase
@@ -751,6 +747,7 @@ const can = (key: string) => permissions.includes(key);
 
     const loadComments = async () => {
       const token = await getToken();
+      console.log("TOKEN:", token);
       if (!token) return;
 
       const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
@@ -762,12 +759,13 @@ const can = (key: string) => permissions.includes(key);
       });
 
       // 🔥 MARK COMMENTS AS READ
-      await fetch(`/api/tasks/${viewTask.id}/comments/read`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+     await fetch(`/api/tasks/${viewTask.id}/comments/read`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  },
+});
 
       // 🔥 BADGE RESET
       setTasksBy((prev) => {

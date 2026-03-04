@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-
+import { supabase } from "@/lib/supabaseClient";
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -8,84 +8,37 @@ const supabaseAdmin = createClient(
 
 /* ================= AUTH ================= */
 
-async function getRequestUser(req: Request) {
-  const token = req.headers.get("authorization")?.replace("Bearer ", "");
-  if (!token) throw new Error("Unauthorized");
+async function getAuthUser(req: Request) {
 
-  const { data: authData, error: authError } =
-    await supabaseAdmin.auth.getUser(token);
+  const auth =
+    req.headers.get("authorization") ||
+    req.headers.get("Authorization");
 
-  if (authError || !authData?.user)
-    throw new Error("Unauthorized");
+  const token = auth?.replace("Bearer ", "");
 
-  const { data: employee } = await supabaseAdmin
-    .from("employees")
-    .select("id, role_id")
-    .eq("user_id", authData.user.id)
-    .single();
+  if (!token) {
+    return null;
+  }
 
-  if (!employee) throw new Error("Employee not found");
+  const { data, error } = await supabase.auth.getUser(token);
 
-  const { data: roleRow } = await supabaseAdmin
-    .from("roles")
-    .select("name")
-    .eq("id", employee.role_id)
-    .single();
+  if (error || !data?.user) {
+    return null;
+  }
 
-  return {
-    id: employee.id,
-    role: String(roleRow?.name || "").toUpperCase(),
-  };
+  return data.user;
 }
 
-/* ================= TASK ACCESS CHECK ================= */
-
-async function checkTaskAccess(
-  taskId: string,
-  user: { id: string; role: string }
-) {
-  if (["ADMIN", "BOSS"].includes(user.role)) return true;
-
-  const { data: task } = await supabaseAdmin
-    .from("tasks")
-    .select("created_by")
-    .eq("id", taskId)
+async function getEmployeeId(userId: string) {
+  const { data: emp } = await supabaseAdmin
+    .from("employees")
+    .select("id")
+    .eq("user_id", userId)
     .single();
 
-  if (!task) throw new Error("Task not found");
+  if (!emp) throw new Error("Employee not found");
 
-  // EMPLOYEE → only assigned
-  if (user.role === "EMPLOYEE") {
-    const { data: assigned } = await supabaseAdmin
-      .from("task_assignees")
-      .select("id")
-      .eq("task_id", taskId)
-      .eq("employee_id", user.id)
-      .maybeSingle();
-
-    return !!assigned;
-  }
-
-  // REHBER → own created OR team task
-  if (user.role === "REHBER") {
-    if (task.created_by === user.id) return true;
-
-    const { data: team } = await supabaseAdmin
-      .from("employee_guides")
-      .select("employee_id")
-      .eq("guide_id", user.id);
-
-    const teamIds = team?.map((t) => t.employee_id) ?? [];
-
-    const { data: assigned } = await supabaseAdmin
-      .from("task_assignees")
-      .select("employee_id")
-      .eq("task_id", taskId);
-
-    return assigned?.some((a) => teamIds.includes(a.employee_id));
-  }
-
-  return false;
+  return emp.id;
 }
 
 /* ================= GET COMMENTS ================= */
@@ -96,15 +49,6 @@ export async function GET(
 ) {
   try {
     const { id: taskId } = await context.params;
-    const user = await getRequestUser(req);
-
-    const hasAccess = await checkTaskAccess(taskId, user);
-    if (!hasAccess) {
-      return NextResponse.json(
-        { error: "Permission denied" },
-        { status: 403 }
-      );
-    }
 
     const { data: comments, error } = await supabaseAdmin
       .from("task_comments")
@@ -132,14 +76,15 @@ export async function GET(
       return NextResponse.json({ comments: [] });
     }
 
-    const authorIds = [
+    // müəllif adlarını employees-dən alırıq (author_id = user_id)
+    const authorUserIds = [
       ...new Set(comments.map((c) => c.author_id).filter(Boolean)),
     ];
 
     const { data: employees } = await supabaseAdmin
       .from("employees")
       .select("user_id, ad, soyad")
-      .in("user_id", authorIds);
+      .in("user_id", authorUserIds);
 
     const formatted = comments.map((c) => {
       const emp = employees?.find((e) => e.user_id === c.author_id);
@@ -176,15 +121,17 @@ export async function POST(
 ) {
   try {
     const { id: taskId } = await context.params;
-    const user = await getRequestUser(req);
 
-    const hasAccess = await checkTaskAccess(taskId, user);
-    if (!hasAccess) {
+    const authUser = await getAuthUser(req);
+
+    if (!authUser) {
       return NextResponse.json(
-        { error: "Permission denied" },
-        { status: 403 }
+        { error: "Unauthorized" },
+        { status: 401 }
       );
     }
+
+    const employeeId = await getEmployeeId(authUser.id);
 
     const body = await req.json();
 
@@ -203,11 +150,14 @@ export async function POST(
       );
     }
 
+    /* ===== INSERT COMMENT ===== */
+    // 🔥 author_id = auth user id
+
     const { data: insertedComment, error } = await supabaseAdmin
       .from("task_comments")
       .insert({
         task_id: taskId,
-        author_id: user.id,
+        author_id: authUser.id,
         body: hasMessage ? body.comment.trim() : null,
         files: hasFiles ? body.files : [],
       })
@@ -216,21 +166,23 @@ export async function POST(
 
     if (error) throw error;
 
-    /* ===== AUTO READ ===== */
+    /* ===== AUTHOR AUTO-READ ===== */
 
-    await supabaseAdmin.from("task_comment_reads").upsert(
-      {
-        task_id: taskId,
-        comment_id: insertedComment.id,
-        employee_id: user.id,
-        read_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "comment_id,employee_id",
-      }
-    );
+    await supabaseAdmin
+      .from("task_comment_reads")
+      .upsert(
+        {
+          task_id: taskId,
+          comment_id: insertedComment.id,
+          employee_id: employeeId,
+          read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "comment_id,employee_id",
+        }
+      );
 
-    /* ===== NOTIFICATIONS ===== */
+    /* ================= NOTIFICATION LOGIC ================= */
 
     const { data: task } = await supabaseAdmin
       .from("tasks")
@@ -243,21 +195,21 @@ export async function POST(
       .select("employee_id")
       .eq("task_id", taskId);
 
-    const notifyIds = new Set<string>();
+    const notifyUserIds = new Set<string>();
 
-    if (task?.created_by && task.created_by !== user.id) {
-      notifyIds.add(task.created_by);
+    if (task?.created_by && task.created_by !== employeeId) {
+      notifyUserIds.add(task.created_by);
     }
 
     assignees?.forEach((a) => {
-      if (a.employee_id !== user.id) {
-        notifyIds.add(a.employee_id);
+      if (a.employee_id !== employeeId) {
+        notifyUserIds.add(a.employee_id);
       }
     });
 
-    if (notifyIds.size > 0) {
+    if (notifyUserIds.size > 0) {
       await supabaseAdmin.from("notifications").insert(
-        Array.from(notifyIds).map((empId) => ({
+        Array.from(notifyUserIds).map((empId) => ({
           user_id: empId,
           type: "TASK_COMMENT",
           title: "Yeni şərh",
@@ -267,13 +219,23 @@ export async function POST(
       );
     }
 
+    /* ================= RESPONSE ================= */
+
+    const { data: emp } = await supabaseAdmin
+      .from("employees")
+      .select("ad, soyad")
+      .eq("id", employeeId)
+      .single();
+
     return NextResponse.json({
       comment: {
         id: insertedComment.id,
         message: insertedComment.body,
         created_at: insertedComment.created_at,
-        author_id: user.id,
-        author_name: "You",
+        author_id: authUser.id,
+        author_name: emp
+          ? `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim()
+          : "Unknown",
         files: Array.isArray(insertedComment.files)
           ? insertedComment.files
           : [],

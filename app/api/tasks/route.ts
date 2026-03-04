@@ -58,42 +58,38 @@ async function getRequestUser(req: Request) {
 export async function GET(req: Request) {
   try {
     const user = await getRequestUser(req);
-
-    // 🔥 RECURSIVE: bütün alt rehber və employee-ləri tapmaq üçün
-    const { data: guideRows } = await supabaseAdmin
-  .from("employee_guides")
-  .select("guide_id, employee_id");
-
-const guideMap: Record<string, string[]> = {};
-
-guideRows?.forEach((row) => {
-  if (!guideMap[row.guide_id]) {
-    guideMap[row.guide_id] = [];
-  }
-  guideMap[row.guide_id].push(row.employee_id);
-});
-
-// DFS memory içində
-function collectAllSubordinates(rootId: string): string[] {
-  const visited = new Set<string>();
-  const stack = [rootId];
-
-  while (stack.length) {
-    const current = stack.pop();
-    if (!current) continue;
-
-    const children = guideMap[current] ?? [];
-
-    for (const child of children) {
-      if (!visited.has(child)) {
-        visited.add(child);
-        stack.push(child);
-      }
-    }
-  }
-
-  return Array.from(visited);
+if (!user) {
+  return NextResponse.json(
+    { error: "Unauthorized" },
+    { status: 403 }
+  );
 }
+    // 🔥 RECURSIVE: bütün alt rehber və employee-ləri tapmaq üçün
+    async function getAllSubordinates(rootId: string): Promise<string[]> {
+      const visited = new Set<string>();
+      const stack = [rootId];
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) continue;
+
+        const { data } = await supabaseAdmin
+          .from("employee_guides")
+          .select("employee_id")
+          .eq("guide_id", current);
+
+        const children = data?.map((r) => r.employee_id) ?? [];
+
+        for (const child of children) {
+          if (!visited.has(child)) {
+            visited.add(child);
+            stack.push(child);
+          }
+        }
+      }
+
+      return Array.from(visited);
+    }
 
     let tasks: any[] = [];
 
@@ -146,7 +142,7 @@ function collectAllSubordinates(rootId: string): string[] {
 
       // 2️⃣ öz işçiləri
       // 🔥 bütün alt rehber və employee-ləri tap
-      const employeeIds = collectAllSubordinates(user.id);
+      const employeeIds = await getAllSubordinates(user.id);
 
       // 3️⃣ işçilərə assign olunan tasklar
       let employeeTaskIds: string[] = [];
@@ -282,28 +278,30 @@ function collectAllSubordinates(rootId: string): string[] {
 
     /* ===== FILES ===== */
 
-    /* ===== FILES (FROM task_files TABLE) ===== */
+    /* ===== FILES (FROM PRIVATE STORAGE BUCKET) ===== */
 
-let filesMap: Record<string, any[]> = {};
+const filesMap: Record<string, any[]> = {};
 
-if (taskIds.length > 0) {
-  const { data: fileRows } = await supabaseAdmin
-    .from("task_files")
-    .select("task_id, original_name, path, size_bytes")
-    .in("task_id", taskIds);
+for (const taskId of taskIds) {
+  const { data: storageFiles } =
+    await supabaseAdmin.storage
+      .from("task-files")
+      .list(taskId, {
+        limit: 100,
+        offset: 0,
+      });
 
-  fileRows?.forEach((f) => {
-    if (!filesMap[f.task_id]) {
-      filesMap[f.task_id] = [];
-    }
-
-    filesMap[f.task_id].push({
-      name: f.original_name,
-      path: f.path,
-      size: f.size_bytes ?? 0,
-    });
-  });
+  if (storageFiles?.length) {
+    filesMap[taskId] = storageFiles.map((f) => ({
+      name: f.name.split("_").slice(1).join("_") || f.name,
+      path: `${taskId}/${f.name}`,
+      size: f.metadata?.size ?? 0,
+    }));
+  } else {
+    filesMap[taskId] = [];
+  }
 }
+
 const finalTasks = tasks.map((task) => {
   const relatedAssignees =
     assignees?.filter((a) => a.task_id === task.id) ?? [];
@@ -335,7 +333,6 @@ const finalTasks = tasks.map((task) => {
 
   return {
     ...task,
-    allow_comments: task.comments_enabled, // 👈 ƏLAVƏ ET
     creator_name: creatorName,
     comment_count: commentCount,
     assigned_to: names,
