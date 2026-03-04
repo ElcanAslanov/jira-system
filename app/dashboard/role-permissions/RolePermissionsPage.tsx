@@ -24,7 +24,17 @@ export default function RolePermissionsPage() {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(true);
   const [isCompaniesOpen, setIsCompaniesOpen] = useState(true);
+const [ready, setReady] = useState(false);
+useEffect(() => {
+  const checkSession = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      setReady(true);
+    }
+  };
 
+  checkSession();
+}, []);
   /* ================= SIDEBAR ORDER ================= */
 
   const sidebarGroups = [
@@ -90,32 +100,34 @@ export default function RolePermissionsPage() {
   /* ================= LOAD INITIAL ================= */
 
   useEffect(() => {
-    async function load() {
-      const { data: rolesData } = await supabase
-        .from("roles")
-        .select("id,name")
-        .order("name");
+  if (!ready) return;
 
-      const { data: permData } = await supabase
-        .from("permissions")
-        .select("key,label");
+  async function load() {
+    const { data: rolesData } = await supabase
+      .from("roles")
+      .select("id,name")
+      .order("name");
 
-      const { data: companyData } = await supabase
-        .from("companies")
-        .select("id,name")
-        .order("name");
+    const { data: permData } = await supabase
+      .from("permissions")
+      .select("key,label");
 
-      setRoles(rolesData || []);
-      setPermissions(permData || []);
-      setCompanies(companyData || []);
+    const { data: companyData } = await supabase
+      .from("companies")
+      .select("id,name")
+      .order("name");
 
-      if (rolesData?.length) {
-        setSelectedRole(rolesData[0].id);
-      }
+    setRoles(rolesData || []);
+    setPermissions(permData || []);
+    setCompanies(companyData || []);
+
+    if (rolesData?.length) {
+      setSelectedRole(rolesData[0].id);
     }
+  }
 
-    load();
-  }, []);
+  load();
+}, [ready]);
 
   /* ================= LOAD ROLE DATA ================= */
 
@@ -209,13 +221,18 @@ export default function RolePermissionsPage() {
   /* ================= SEARCH ================= */
 
   const filtered = useMemo(() => {
-    if (!search) return permissions;
-    return permissions.filter(
-      (p) =>
-        p.key.toLowerCase().includes(search.toLowerCase()) ||
-        p.label.toLowerCase().includes(search.toLowerCase())
+  if (!search) return permissions;
+
+  return permissions.filter((p) => {
+    const key = p.key?.toLowerCase() || "";
+    const label = p.label?.toLowerCase() || "";
+
+    return (
+      key.includes(search.toLowerCase()) ||
+      label.includes(search.toLowerCase())
     );
-  }, [permissions, search]);
+  });
+}, [permissions, search]);
 
   const filteredCompanies = useMemo(() => {
     if (!companySearch) return companies;
@@ -276,9 +293,9 @@ export default function RolePermissionsPage() {
 
             <div style={{ marginTop: 20 }}>
               {sidebarGroups.map((group) => {
-                const groupPerms = filtered.filter((p) =>
-                  group.permissions.includes(p.key)
-                );
+               const groupPerms = filtered.filter(
+  (p) => p.key && group.permissions.includes(p.key)
+);
                 if (groupPerms.length === 0) return null;
 
                 const isOpen = openGroup === group.title;
