@@ -58,7 +58,7 @@ export default function CreateTaskPage() {
     const token = session.data.session?.access_token;
     if (!token) return;
 
-    const res = await fetch("/api/employees/list", {
+    const res = await fetch("/api/tasks/assignable-guides", {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -377,3 +377,5 @@ export default function CreateTaskPage() {
     </div>
   );
 }
+
+//burdan sora basladim

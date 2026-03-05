@@ -23,6 +23,8 @@ type Company = {
 };
 
 export default function UserPermissionsPage() {
+  const [guides, setGuides] = useState<any[]>([]);
+const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -49,6 +51,10 @@ export default function UserPermissionsPage() {
 
   const sidebarGroups = [
     {
+    title: "Dashboard",
+    permissions: ["dashboard.view"],
+  },
+    {
       title: "İşçilər",
       permissions: ["employees.view", "employees.create"],
     },
@@ -59,6 +65,13 @@ export default function UserPermissionsPage() {
         "departments.view",
         "positions.view",
         "roles.view",
+      ],
+    },
+     {
+      title: "Tapşırıqlar",
+      permissions: [
+        "tasks.view",
+        "tasks.create",
       ],
     },
     {
@@ -81,6 +94,14 @@ export default function UserPermissionsPage() {
       title: "Dövrlü Tapşırıqlar",
       permissions: ["recurring.view", "recurring.create"],
     },
+      {
+  title: "Dövrlü Tapşırıq Button Yetkiləri",
+  permissions: [
+    "recurring.view.button",
+    "recurring.pause.button",
+    "recurring.delete.button",
+  ],
+},
     {
       title: "Yetkilər",
       permissions: ["role_permissions.view"],
@@ -122,6 +143,25 @@ export default function UserPermissionsPage() {
     }
   }
 
+  async function loadGuides(companyIds: number[]) {
+  const { data } = await supabase
+    .from("employees")
+    .select(`
+      id,
+      ad,
+      soyad,
+      company_id,
+      roles!inner(name)
+    `)
+    .in("company_id", companyIds)
+    .in("roles.name", ["REHBER", "EMPLOYEE"]) // 🔥 dəyişiklik burada
+    .neq("user_id", selectedUserId); // 🔥 seçilən useri çıxar
+
+  setGuides(data || []);
+}
+
+
+  
   /* ================= LOAD ROLE + USER PERMS ================= */
 
   useEffect(() => {
@@ -133,61 +173,88 @@ export default function UserPermissionsPage() {
     loadPermissions(user.role_id);
   }, [selectedUserId, users]);
 
-  async function loadPermissions(roleId: string) {
-    setLoading(true);
+ async function loadPermissions(roleId: string) {
+  setLoading(true);
 
-    // ROLE PERMS
-    const { data: roleData } = await supabase
-      .from("role_permissions")
-      .select("permission_key")
-      .eq("role_id", roleId);
+  const { data: roleData } = await supabase
+    .from("role_permissions")
+    .select("permission_key")
+    .eq("role_id", roleId);
 
-    // USER PERMS
-    const { data: userData } = await supabase
-      .from("user_permissions")
-      .select("permission_key,allowed")
-      .eq("user_id", selectedUserId);
+  const { data: userData } = await supabase
+    .from("user_permissions")
+    .select("permission_key,allowed")
+    .eq("user_id", selectedUserId);
 
-    // ROLE COMPANIES
-    const { data: roleCompData } = await supabase
-      .from("role_company_access")
-      .select("company_id")
-      .eq("role_id", roleId);
+  const { data: roleCompData } = await supabase
+    .from("role_company_access")
+    .select("company_id")
+    .eq("role_id", roleId);
 
-    // USER COMPANIES
-    const { data: userCompData } = await supabase
-      .from("user_company_access")
-      .select("company_id,allowed")
-      .eq("user_id", selectedUserId);
+  const { data: userCompData } = await supabase
+    .from("user_company_access")
+    .select("company_id,allowed")
+    .eq("user_id", selectedUserId);
 
-    setRolePerms(roleData?.map((x: any) => x.permission_key) || []);
+  const { data: userGuides } = await supabase
+    .from("role_assignable_guides")
+    .select("guide_id")
+    .eq("role_id", roleId);
 
-    setUserExtras(
-      userData?.filter((x: any) => x.allowed === true)
-        .map((x: any) => x.permission_key) || []
-    );
+const { data: employeeRow } = await supabase
+  .from("employees")
+  .select("id")
+  .eq("user_id", selectedUserId)
+  .single();
 
-    setUserDenies(
-      userData?.filter((x: any) => x.allowed === false)
-        .map((x: any) => x.permission_key) || []
-    );
+const { data: subordinates } = await supabase
+  .from("employee_guides")
+  .select("employee_id")
+  .eq("guide_id", employeeRow?.id);
 
-    setRoleCompanies(
-      roleCompData?.map((x: any) => x.company_id) || []
-    );
+  setRolePerms(roleData?.map((x: any) => x.permission_key) || []);
 
-    setCompanyExtras(
-      userCompData?.filter((x: any) => x.allowed === true)
-        .map((x: any) => x.company_id) || []
-    );
+  setUserExtras(
+    userData?.filter((x: any) => x.allowed === true)
+      .map((x: any) => x.permission_key) || []
+  );
 
-    setCompanyDenies(
-      userCompData?.filter((x: any) => x.allowed === false)
-        .map((x: any) => x.company_id) || []
-    );
+  setUserDenies(
+    userData?.filter((x: any) => x.allowed === false)
+      .map((x: any) => x.permission_key) || []
+  );
 
-    setLoading(false);
-  }
+  setRoleCompanies(
+    roleCompData?.map((x: any) => x.company_id) || []
+  );
+
+  setCompanyExtras(
+    userCompData?.filter((x: any) => x.allowed === true)
+      .map((x: any) => x.company_id) || []
+  );
+
+  setCompanyDenies(
+    userCompData?.filter((x: any) => x.allowed === false)
+      .map((x: any) => x.company_id) || []
+  );
+
+ const guideIds = userGuides?.map((g: any) => g.guide_id) || [];
+const subordinateIds = subordinates?.map((s: any) => s.employee_id) || [];
+
+// Əgər DB-də heç bir qeyd yoxdursa → subordinate-ları default seç
+if (guideIds.length === 0) {
+  setSelectedGuides(subordinateIds);
+} else {
+  setSelectedGuides(guideIds);
+}
+
+  setLoading(false);
+}
+
+
+
+
+
 
   /* ================= FINAL PERMISSIONS ================= */
 
@@ -206,6 +273,15 @@ export default function UserPermissionsPage() {
     companyDenies.forEach((c) => base.delete(c));
     return Array.from(base);
   }, [roleCompanies, companyExtras, companyDenies]);
+
+   useEffect(() => {
+  if (!finalCompanies || finalCompanies.length === 0) {
+    setGuides([]);
+    return;
+  }
+
+  loadGuides(finalCompanies);
+}, [finalCompanies]);
 
   /* ================= TOGGLE ================= */
 
@@ -226,6 +302,14 @@ export default function UserPermissionsPage() {
     );
   }
 
+  function toggleGuide(id: string) {
+  setSelectedGuides((prev) =>
+    prev.includes(id)
+      ? prev.filter((g) => g !== id)
+      : [...prev, id]
+  );
+}
+
   function toggleCompany(id: number) {
     const isInRole = roleCompanies.includes(id);
     const isExtra = companyExtras.includes(id);
@@ -243,10 +327,19 @@ export default function UserPermissionsPage() {
     );
   }
 
+ 
   /* ================= SAVE ================= */
 
   async function save() {
     setLoading(true);
+    const user = users.find((u) => u.user_id === selectedUserId);
+const roleId = user?.role_id;
+
+if (!roleId) {
+  alert("Role tapılmadı");
+  setLoading(false);
+  return;
+}
 
     // PERMISSIONS
     await supabase
@@ -289,6 +382,23 @@ export default function UserPermissionsPage() {
         allowed: false,
       })),
     ];
+
+    // REHBER YETKILERI
+
+await supabase
+  .from("role_assignable_guides")
+  .delete()
+  .eq("role_id", roleId);
+
+if (selectedGuides.length > 0) {
+  await supabase.from("role_assignable_guides").insert(
+    selectedGuides.map((guide_id) => ({
+      role_id: roleId,
+      guide_id,
+      company_id: guides.find(g => g.id === guide_id)?.company_id
+    }))
+  );
+}
 
     if (companyRows.length > 0) {
       await supabase.from("user_company_access").insert(companyRows);
@@ -524,6 +634,49 @@ export default function UserPermissionsPage() {
         )}
       </div>
 
+      {/* ================= REHBER YETKILERI ================= */}
+
+<div style={{ ...card, marginTop: 24 }}>
+  <b>👨‍💼 Rehber Yetkiləri</b>
+
+  <div style={{ marginTop: 16 }}>
+    {guides.map((g) => {
+
+      const active = selectedGuides.includes(g.id);
+
+      return (
+        <div
+          key={g.id}
+          onClick={() => toggleGuide(g.id)}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            marginBottom: 8,
+            cursor: "pointer",
+            background: active ? "#ede9fe" : "#ffffff",
+            border: active
+              ? "1px solid #7c3aed"
+              : "1px solid #e5e7eb",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={active}
+            readOnly
+          />
+
+          {g.ad} {g.soyad}
+        </div>
+      );
+    })}
+  </div>
+</div>
+
       <button
         onClick={save}
         disabled={loading}
@@ -563,3 +716,5 @@ const button: React.CSSProperties = {
   fontWeight: 900,
   cursor: "pointer",
 };
+
+//burdan sora basladim

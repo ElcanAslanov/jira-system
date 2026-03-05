@@ -37,7 +37,18 @@ export default function Sidebar() {
   ==============================*/
 
   const groups: Group[] = [
+    {
+      title: "Dashboard",
+      key: "dashboard",
+      links: [
         {
+          href: "/dashboard",
+          label: "Ana səhifə",
+          permission: "dashboard.view",
+        },
+      ],
+    },
+    {
       title: "İşçilər",
       key: "employees",
       links: [
@@ -128,101 +139,101 @@ export default function Sidebar() {
      LOAD PERMISSIONS + EMPLOYEE
   ==============================*/
 
-useEffect(() => {
-  if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id) return;
 
-  let mounted = true;
+    let mounted = true;
 
-  async function loadPermissions() {
-    try {
-      // 🚀 EMPLOYEE-ni tez yüklə
-      const { data: employee } = await supabase
-        .from("employees")
-        .select("ad,soyad,email,role_id")
-        .eq("user_id", user.id)
-        .single();
+    async function loadPermissions() {
+      try {
+        // 🚀 EMPLOYEE-ni tez yüklə
+        const { data: employee } = await supabase
+          .from("employees")
+          .select("ad,soyad,email,role_id")
+          .eq("user_id", user.id)
+          .single();
 
-      if (!employee?.role_id || !mounted) return;
+        if (!employee?.role_id || !mounted) return;
 
-      setEmployeeInfo({
-        ad: employee.ad,
-        soyad: employee.soyad,
-        email: employee.email ?? user?.email ?? null,
-      });
-
-      const roleId = employee.role_id;
-
-      // 🚀 Paralel permission query
-      const [rolePermRes, userPermRes] = await Promise.all([
-        supabase
-          .from("role_permissions")
-          .select("permission_key")
-          .eq("role_id", roleId),
-
-        supabase
-          .from("user_permissions")
-          .select("permission_key,allowed")
-          .eq("user_id", user.id),
-      ]);
-
-      let finalPerms =
-        rolePermRes.data?.map((x: any) => x.permission_key) || [];
-
-      const userPerms = userPermRes.data;
-
-      if (userPerms) {
-        userPerms.forEach((p: any) => {
-          if (p.allowed === true) {
-            if (!finalPerms.includes(p.permission_key)) {
-              finalPerms.push(p.permission_key);
-            }
-          }
-          if (p.allowed === false) {
-            finalPerms = finalPerms.filter(
-              (k) => k !== p.permission_key
-            );
-          }
+        setEmployeeInfo({
+          ad: employee.ad,
+          soyad: employee.soyad,
+          email: employee.email ?? user?.email ?? null,
         });
-      }
 
-      if (mounted) {
-        setPermissions(finalPerms);
-      }
+        const roleId = employee.role_id;
 
-    } catch (err) {
-      console.error("Sidebar load error:", err);
+        // 🚀 Paralel permission query
+        const [rolePermRes, userPermRes] = await Promise.all([
+          supabase
+            .from("role_permissions")
+            .select("permission_key")
+            .eq("role_id", roleId),
+
+          supabase
+            .from("user_permissions")
+            .select("permission_key,allowed")
+            .eq("user_id", user.id),
+        ]);
+
+        let finalPerms =
+          rolePermRes.data?.map((x: any) => x.permission_key) || [];
+
+        const userPerms = userPermRes.data;
+
+        if (userPerms) {
+          userPerms.forEach((p: any) => {
+            if (p.allowed === true) {
+              if (!finalPerms.includes(p.permission_key)) {
+                finalPerms.push(p.permission_key);
+              }
+            }
+            if (p.allowed === false) {
+              finalPerms = finalPerms.filter(
+                (k) => k !== p.permission_key
+              );
+            }
+          });
+        }
+
+        if (mounted) {
+          setPermissions(finalPerms);
+        }
+
+      } catch (err) {
+        console.error("Sidebar load error:", err);
+      }
     }
-  }
 
-  loadPermissions();
+    loadPermissions();
 
-  return () => {
-    mounted = false;
-  };
-}, [user?.id]);
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   /* =============================
      FILTER GROUPS
   ==============================*/
-const visibleGroups = useMemo(() => {
-  return groups
-    .map((group) => {
-      if (group.key === "dashboards") {
-        return group;
-      }
+  const visibleGroups = useMemo(() => {
+    return groups
+      .map((group) => {
+        if (group.key === "dashboards") {
+          return group;
+        }
 
-      const filteredLinks = group.links.filter(
-        (link) =>
-          !link.permission ||
-          permissions.includes(link.permission)
-      );
+        const filteredLinks = group.links.filter(
+          (link) =>
+            !link.permission ||
+            permissions.includes(link.permission)
+        );
 
-      if (filteredLinks.length === 0) return null;
+        if (filteredLinks.length === 0) return null;
 
-      return { ...group, links: filteredLinks };
-    })
-    .filter(Boolean) as Group[];
-}, [permissions]);
+        return { ...group, links: filteredLinks };
+      })
+      .filter(Boolean) as Group[];
+  }, [permissions]);
 
   /* =============================
      AUTO OPEN ACTIVE GROUP
@@ -241,15 +252,15 @@ const visibleGroups = useMemo(() => {
   }, [pathname, visibleGroups]);
 
   const logout = async () => {
-  try {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
 
-    // 🔥 bütün state reset üçün tam reload
-    window.location.href = "/login";
-  } catch (err) {
-    console.error("Logout error:", err);
-  }
-};
+      // 🔥 bütün state reset üçün tam reload
+      window.location.href = "/login";
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
 
   return (
     <aside className="fixed top-0 left-0 w-64 h-screen bg-gradient-to-b from-[#0f172a] to-[#111827] text-white flex flex-col shadow-xl">
@@ -286,11 +297,10 @@ const visibleGroups = useMemo(() => {
               {group.title}
               <ChevronDown
                 size={16}
-                className={`transition-transform ${
-                  openGroup === group.key
+                className={`transition-transform ${openGroup === group.key
                     ? "rotate-180"
                     : ""
-                }`}
+                  }`}
               />
             </button>
 
@@ -304,11 +314,10 @@ const visibleGroups = useMemo(() => {
                     <Link
                       key={link.href}
                       href={link.href}
-                      className={`block px-4 py-2 rounded-lg text-sm transition ${
-                        isActive
+                      className={`block px-4 py-2 rounded-lg text-sm transition ${isActive
                           ? "bg-[#e42526]/20 text-white"
                           : "text-gray-400 hover:bg-white/5 hover:text-white"
-                      }`}
+                        }`}
                     >
                       {link.label}
                     </Link>
@@ -324,11 +333,10 @@ const visibleGroups = useMemo(() => {
         {permissions.includes("settings.view") && (
           <Link
             href="/dashboard/settings"
-            className={`block w-full text-center py-2.5 rounded-xl text-sm transition ${
-              pathname === "/dashboard/settings"
+            className={`block w-full text-center py-2.5 rounded-xl text-sm transition ${pathname === "/dashboard/settings"
                 ? "bg-[#e42526]/20 text-white"
                 : "bg-white/5 hover:bg-white/10 text-gray-300"
-            }`}
+              }`}
           >
             Parametrlər
           </Link>

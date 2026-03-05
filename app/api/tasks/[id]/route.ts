@@ -96,25 +96,46 @@ export async function PUT(
     if (taskErr) throw taskErr;
     if (!task) throw new Error("Task not found");
 
-    // ===== PERMISSION CHECK (EDIT) =====
-    const canEdit =
-      ["ADMIN", "BOSS"].includes(user.role) ||
-      hasAnyPermission(user, ["tasks.edit.list", "tasks.edit.drawer"]);
+   // ===== STATUS CHANGE icazəsi =====
+const isStatusUpdate = body.status !== undefined;
 
-    if (!canEdit) {
-      return NextResponse.json(
-        { error: "Permission denied (edit)" },
-        { status: 403 }
-      );
-    }
+if (!isStatusUpdate) {
+  const canEdit =
+    ["ADMIN", "BOSS"].includes(user.role) ||
+    hasAnyPermission(user, ["tasks.edit.list", "tasks.edit.drawer"]);
+
+  if (!canEdit) {
+    return NextResponse.json(
+      { error: "Permission denied (edit)" },
+      { status: 403 }
+    );
+  }
+}
 
     // DONE only ADMIN can change
-    if (task.status === "DONE" && user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "DONE tapşırıqları yalnız ADMIN dəyişə bilər" },
-        { status: 403 }
-      );
-    }
+    if (task.status === "DONE" && body.status === "TODO") {
+  const { data: assignees } = await supabaseAdmin
+    .from("task_assignees")
+    .select("employee_id")
+    .eq("task_id", taskId);
+
+  const assignedIds = assignees?.map(a => a.employee_id) ?? [];
+  const isAssigned = assignedIds.includes(user.id);
+  const isCreator = task.created_by === user.id;
+  const isRehber = user.role === "REHBER";
+
+  const canReopen =
+    user.role === "ADMIN" ||
+    isRehber ||
+    (isCreator && !isAssigned);
+
+  if (!canReopen) {
+    return NextResponse.json(
+      { error: "Reopen icazəniz yoxdur" },
+      { status: 403 }
+    );
+  }
+}
 
     /* ================= EMPLOYEE ================= */
     // EMPLOYEE: only if assigned
@@ -139,6 +160,7 @@ export async function PUT(
           status: newStatus,
           sort_index:
             body.sort_index !== undefined ? body.sort_index : task.sort_index,
+            updated_by: user.id,
         })
         .eq("id", taskId);
 
@@ -198,14 +220,17 @@ export async function PUT(
     if (body.due_date !== undefined) updateFields.due_date = body.due_date;
     if (body.start_date !== undefined) updateFields.start_date = body.start_date;
 
-    if (Object.keys(updateFields).length > 0) {
-      const { error: upErr } = await supabaseAdmin
-        .from("tasks")
-        .update(updateFields)
-        .eq("id", taskId);
+   if (Object.keys(updateFields).length > 0) {
 
-      if (upErr) throw upErr;
-    }
+  updateFields.updated_by = user.id;
+
+  const { error: upErr } = await supabaseAdmin
+    .from("tasks")
+    .update(updateFields)
+    .eq("id", taskId);
+
+  if (upErr) throw upErr;
+}
 
     /* ================= STATUS CHANGE NOTIF ================= */
     if (body.status && body.status !== task.status) {

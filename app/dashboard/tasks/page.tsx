@@ -25,7 +25,7 @@ import { useUser } from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
 
 import DatePicker from "antd/es/date-picker";
-import Select from "antd/es/select";
+import { Select } from "antd";
 import dayjs from "dayjs";
 import { message } from "antd";
 import { useEditor, EditorContent } from "@tiptap/react"
@@ -38,9 +38,17 @@ import { createPortal } from "react-dom"
 
 
 
+
 const { RangePicker } = DatePicker;
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"] as const;
+
+const STATUS_FLOW: Record<Status, Status[]> = {
+  TODO: ["IN_PROGRESS"],
+  IN_PROGRESS: ["DONE"],
+  DONE: ["TODO"],
+  CANCELLED: []
+};
 type Status = (typeof STATUSES)[number];
 
 type TaskFile = {
@@ -63,6 +71,7 @@ type Task = {
   created_by?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  updated_by_name?: string | null;
   files?: TaskFile[]; // 🔥 əlavə olundu
   comment_count?: number; // 🔥 BUNU ƏLAVƏ ET
   creator_name?: string | null; // 🔥 BUNU ƏLAVƏ ET
@@ -72,6 +81,10 @@ type TasksByStatus = Record<Status, Task[]>;
 
 function isStatus(x: any): x is Status {
   return STATUSES.includes(x);
+}
+
+function canTransition(from: Status, to: Status) {
+  return STATUS_FLOW[from]?.includes(to);
 }
 
 function groupByStatus(tasks: Task[]): TasksByStatus {
@@ -480,45 +493,45 @@ export default function TasksPage() {
   }, [searchInput]);
 
   useEffect(() => {
-  if (!user?.id) return;
+    if (!user?.id) return;
 
-  async function loadPermissions() {
-    // 🔹 Role permissions
-    const { data: rolePerms } = await supabase
-      .from("role_permissions")
-      .select("permission_key")
-      .eq("role_id", (user as any)?.role_id);
+    async function loadPermissions() {
+      // 🔹 Role permissions
+      const { data: rolePerms } = await supabase
+        .from("role_permissions")
+        .select("permission_key")
+        .eq("role_id", (user as any)?.role_id);
 
-    // 🔹 User override permissions
-    const { data: userPerms } = await supabase
-      .from("user_permissions")
-      .select("permission_key, allowed")
-      .eq("user_id", user.id);
+      // 🔹 User override permissions
+      const { data: userPerms } = await supabase
+        .from("user_permissions")
+        .select("permission_key, allowed")
+        .eq("user_id", user.id);
 
-    let finalPerms =
-      rolePerms?.map((p: any) => p.permission_key) || [];
+      let finalPerms =
+        rolePerms?.map((p: any) => p.permission_key) || [];
 
-    // 🔹 Override logic (EXTRA / DENY)
-    if (userPerms) {
-      userPerms.forEach((p: any) => {
-        if (p.allowed === true && !finalPerms.includes(p.permission_key)) {
-          finalPerms.push(p.permission_key);
-        }
-        if (p.allowed === false) {
-          finalPerms = finalPerms.filter(
-            (k) => k !== p.permission_key
-          );
-        }
-      });
+      // 🔹 Override logic (EXTRA / DENY)
+      if (userPerms) {
+        userPerms.forEach((p: any) => {
+          if (p.allowed === true && !finalPerms.includes(p.permission_key)) {
+            finalPerms.push(p.permission_key);
+          }
+          if (p.allowed === false) {
+            finalPerms = finalPerms.filter(
+              (k) => k !== p.permission_key
+            );
+          }
+        });
+      }
+
+      setPermissions(finalPerms);
     }
 
-    setPermissions(finalPerms);
-  }
+    loadPermissions();
+  }, [user?.id]);
 
-  loadPermissions();
-}, [user?.id]);
-
-const can = (key: string) => permissions.includes(key);
+  const can = (key: string) => permissions.includes(key);
 
 
   const paginatedTasks = useMemo(() => {
@@ -538,8 +551,8 @@ const can = (key: string) => permissions.includes(key);
   }, []);
 
   const getToken = useCallback(async () => {
-   const { data } = await supabase.auth.getSession();
-return data.session?.access_token ?? null;
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
   }, []);
 
   const loadTasks = useCallback(async () => {
@@ -614,8 +627,7 @@ return data.session?.access_token ?? null;
 
       const token = await getToken();
       if (!token) throw new Error("No auth token");
-      console.log("UPDATE TASK ID:", taskId);
-      console.log("UPDATES:", updates);
+    
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: {
@@ -629,7 +641,10 @@ return data.session?.access_token ?? null;
 
       if (!res.ok) {
         console.log("PUT ERROR:", data);
-        throw new Error(data.error || "Update failed");
+
+        message.error(data.error || "Tapşırıq yenilənmədi");
+
+        return;
       }
     },
     [getToken]
@@ -677,12 +692,12 @@ return data.session?.access_token ?? null;
     [getToken, user?.id, user]
   );
 
- useEffect(() => {
-  if (!loading && user) {
-    loadTasks();
-    loadUsers();
-  }
-}, [loading, user]);
+  useEffect(() => {
+    if (!loading && user) {
+      loadTasks();
+      loadUsers();
+    }
+  }, [loading, user]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -708,7 +723,7 @@ return data.session?.access_token ?? null;
     return () => {
       channel.unsubscribe();
     };
-}, [user?.id]);
+  }, [user?.id]);
 
   useEffect(() => {
     const channel = supabase
@@ -747,7 +762,6 @@ return data.session?.access_token ?? null;
 
     const loadComments = async () => {
       const token = await getToken();
-      console.log("TOKEN:", token);
       if (!token) return;
 
       const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
@@ -759,13 +773,13 @@ return data.session?.access_token ?? null;
       });
 
       // 🔥 MARK COMMENTS AS READ
-     await fetch(`/api/tasks/${viewTask.id}/comments/read`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-});
+      await fetch(`/api/tasks/${viewTask.id}/comments/read`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       // 🔥 BADGE RESET
       setTasksBy((prev) => {
@@ -821,7 +835,6 @@ return data.session?.access_token ?? null;
       for (const file of commentFiles) {
         const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
 
-        console.log("Uploading file:", fileName);
 
         const { error } = await supabase.storage
           .from("task-comment-files")
@@ -842,7 +855,6 @@ return data.session?.access_token ?? null;
         });
       }
 
-      console.log("Uploaded files array:", uploaded);
 
       // 🔥 COMMENT INSERT
       const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
@@ -909,8 +921,11 @@ return data.session?.access_token ?? null;
     const found = findTask(tasksBy, id);
 
     // 🔒 DONE task drag olunmasın
-    if (found?.task.status === "DONE") {
-      return; // drag başlamır
+    if (
+      (user as any)?.role === "EMPLOYEE" &&
+      (found?.task.status === "DONE" || found?.task.status === "CANCELLED")
+    ) {
+      return;
     }
 
     setActiveTaskId(id);
@@ -944,6 +959,19 @@ return data.session?.access_token ?? null;
       const targetStatus: Status = overAsStatus
         ? overAsStatus
         : (overFoundTask?.status ?? activeFound.status);
+
+      // 🔒 EMPLOYEE CANCELLED column-a ata bilməz
+      if (
+        targetStatus === "CANCELLED" &&
+        (user as any)?.role === "EMPLOYEE"
+      ) {
+        return;
+      }
+
+      // 🔒 Status transition rule
+      if (!canTransition(activeFound.status, targetStatus) && activeFound.status !== targetStatus) {
+        return;
+      }
 
       // if search filter is on, dragging should still operate on FULL tasksBy,
       // but visually user drags within filtered columns; we apply to tasksBy anyway.
@@ -1003,6 +1031,16 @@ return data.session?.access_token ?? null;
   if (loading) return <div className="p-10">Loading...</div>;
   if (!user) return <div className="p-10">No user session</div>;
 
+  const isCreator = viewTask?.created_by === user.id
+  const isAssigned = viewTask?.assigned_to?.includes(user.id)
+  const isRehber = (user as any)?.role === "REHBER"
+  const isAdmin = (user as any)?.role === "admin"
+  const isEmployee = (user as any)?.role === "EMPLOYEE"
+
+  const canReopen =
+    isRehber ||
+    (isCreator && !isAssigned)
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 sm:px-6 lg:px-10 pt-0 pb-6 lg:pb-10 space-y-8 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -1043,51 +1081,51 @@ return data.session?.access_token ?? null;
 
 
         <div className="flex items-center gap-3">
-{can("tasks.export.list") && (
-          <button
-            onClick={async () => {
-              if (!filteredFlat.length) return;
+          {can("tasks.export.list") && (
+            <button
+              onClick={async () => {
+                if (!filteredFlat.length) return;
 
-              try {
-                // 🚀 XLSX yalnız klik zamanı yüklənəcək
-                const XLSX = await import("xlsx");
+                try {
+                  // 🚀 XLSX yalnız klik zamanı yüklənəcək
+                  const XLSX = await import("xlsx");
 
-                const data = filteredFlat.map((t) => ({
-                  "Başlıq": t.title,
-                  "Təsvir": t.description ?? "",
-                  "Status": t.status.replace("_", " "),
-                  "Prioritet": t.priority,
-                  "Başlama tarixi": formatDMY(t.start_date),
-                  "Son tarix": formatDMY(t.due_date),
-                  "Təyin olunan": (t.assigned_to ?? []).join(", "),
-                  "Fayllar": (t.files ?? []).map(f => f.name).join(", "),
-                  "Yaradılma tarixi": formatDMY(t.created_at, true),
-                  "Yenilənmə tarixi": formatDMY(t.updated_at, true),
-                }));
+                  const data = filteredFlat.map((t) => ({
+                    "Başlıq": t.title,
+                    "Təsvir": t.description ?? "",
+                    "Status": t.status.replace("_", " "),
+                    "Prioritet": t.priority,
+                    "Başlama tarixi": formatDMY(t.start_date),
+                    "Son tarix": formatDMY(t.due_date),
+                    "Təyin olunan": (t.assigned_to ?? []).join(", "),
+                    "Fayllar": (t.files ?? []).map(f => f.name).join(", "),
+                    "Yaradılma tarixi": formatDMY(t.created_at, true),
+                    "Yenilənmə tarixi": formatDMY(t.updated_at, true),
+                  }));
 
-                const worksheet = XLSX.utils.json_to_sheet(data);
-                const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıqlar");
+                  const worksheet = XLSX.utils.json_to_sheet(data);
+                  const workbook = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıqlar");
 
-                XLSX.writeFile(workbook, "tapshiriqlar.xlsx");
+                  XLSX.writeFile(workbook, "tapshiriqlar.xlsx");
 
-              } catch (err) {
-                console.error("Export error:", err);
-              }
-            }}
-            className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
-          >
-            Export
-          </button>
-)}
-{can("tasks.print.list") && (
-          <button
-            onClick={() => window.print()}
-            className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
-          >
-            Print
-          </button>
-)}
+                } catch (err) {
+                  console.error("Export error:", err);
+                }
+              }}
+              className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
+            >
+              Export
+            </button>
+          )}
+          {can("tasks.print.list") && (
+            <button
+              onClick={() => window.print()}
+              className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
+            >
+              Print
+            </button>
+          )}
         </div>
       </div>
 
@@ -1112,6 +1150,11 @@ return data.session?.access_token ?? null;
                   title={col.id}
                   tasks={col.tasks}
                   can={can}
+                  currentUserId={user.id}
+                  userRole={(user as any)?.role}   // 👈 bunu əlavə et
+                  users={users}   // BUNU ƏLAVƏ ET
+                  updateTask={updateTask}
+                  loadTasks={loadTasks}
                   onSelect={(task) => {
                     setViewTask(task);
                     setDrawerOpen(true);
@@ -1398,48 +1441,48 @@ return data.session?.access_token ?? null;
                             </span>
                           ) : null}
                         </div>
-{can("tasks.edit.list") && (
-                        <button
-                          onClick={() => setSelectedTask(t)}
-                          className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
-                        >
-                          Edit
-                        </button>
-)}
-{can("tasks.delete.list") && (
-                        <button
-                          onClick={async () => {
-                            if (!confirm("Bu tapşırıq silinsin?")) return;
+                        {can("tasks.edit.list") && (
+                          <button
+                            onClick={() => setSelectedTask(t)}
+                            className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {can("tasks.delete.list") && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm("Bu tapşırıq silinsin?")) return;
 
-                            const snapshot = tasksBy;
+                              const snapshot = tasksBy;
 
-                            // optimistic remove
-                            const f = findTask(tasksBy, t.id);
-                            if (!f) return;
+                              // optimistic remove
+                              const f = findTask(tasksBy, t.id);
+                              if (!f) return;
 
-                            const next: TasksByStatus = {
-                              TODO: [...tasksBy.TODO],
-                              IN_PROGRESS: [...tasksBy.IN_PROGRESS],
-                              DONE: [...tasksBy.DONE],
-                              CANCELLED: [...tasksBy.CANCELLED],
-                            };
+                              const next: TasksByStatus = {
+                                TODO: [...tasksBy.TODO],
+                                IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+                                DONE: [...tasksBy.DONE],
+                                CANCELLED: [...tasksBy.CANCELLED],
+                              };
 
-                            next[f.status].splice(f.index, 1);
-                            setTasksBy(next);
+                              next[f.status].splice(f.index, 1);
+                              setTasksBy(next);
 
-                            try {
-                              await deleteTask(t.id);
-                              pushActivity(`• Deleted "${t.title}"`);
-                            } catch {
-                              setTasksBy(snapshot);
-                              pushActivity(`• Delete failed "${t.title}"`);
-                            }
-                          }}
-                          className="border px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50"
-                        >
-                          Sil
-                        </button>
-)}
+                              try {
+                                await deleteTask(t.id);
+                                pushActivity(`• Deleted "${t.title}"`);
+                              } catch {
+                                setTasksBy(snapshot);
+                                pushActivity(`• Delete failed "${t.title}"`);
+                              }
+                            }}
+                            className="border px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50"
+                          >
+                            Sil
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1512,45 +1555,45 @@ return data.session?.access_token ?? null;
                       ) : null}
                     </div>
                     {can("tasks.edit.list") && (
-                    <button
-                      onClick={() => setSelectedTask(t)}
-                      className="flex-1 border px-3 py-2 rounded-lg text-sm"
-                    >
-                      Edit
-                    </button>
+                      <button
+                        onClick={() => setSelectedTask(t)}
+                        className="flex-1 border px-3 py-2 rounded-lg text-sm"
+                      >
+                        Edit
+                      </button>
                     )}
-{can("tasks.delete.list") && (
-                    <button
-                      onClick={async () => {
-                        if (!confirm("Bu tapşırıq silinsin?")) return;
+                    {can("tasks.delete.list") && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm("Bu tapşırıq silinsin?")) return;
 
-                        const snapshot = tasksBy;
-                        const f = findTask(tasksBy, t.id);
-                        if (!f) return;
+                          const snapshot = tasksBy;
+                          const f = findTask(tasksBy, t.id);
+                          if (!f) return;
 
-                        const next: TasksByStatus = {
-                          TODO: [...tasksBy.TODO],
-                          IN_PROGRESS: [...tasksBy.IN_PROGRESS],
-                          DONE: [...tasksBy.DONE],
-                          CANCELLED: [...tasksBy.CANCELLED],
-                        };
+                          const next: TasksByStatus = {
+                            TODO: [...tasksBy.TODO],
+                            IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+                            DONE: [...tasksBy.DONE],
+                            CANCELLED: [...tasksBy.CANCELLED],
+                          };
 
-                        next[f.status].splice(f.index, 1);
-                        setTasksBy(next);
+                          next[f.status].splice(f.index, 1);
+                          setTasksBy(next);
 
-                        try {
-                          await deleteTask(t.id);
-                          pushActivity(`• Deleted "${t.title}"`);
-                        } catch {
-                          setTasksBy(snapshot);
-                          pushActivity(`• Delete failed "${t.title}"`);
-                        }
-                      }}
-                      className="flex-1 border px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
-                    >
-                      Sil
-                    </button>
-)}
+                          try {
+                            await deleteTask(t.id);
+                            pushActivity(`• Deleted "${t.title}"`);
+                          } catch {
+                            setTasksBy(snapshot);
+                            pushActivity(`• Delete failed "${t.title}"`);
+                          }
+                        }}
+                        className="flex-1 border px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
+                      >
+                        Sil
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1612,6 +1655,7 @@ return data.session?.access_token ?? null;
         <EditDrawer
           task={selectedTask}
           users={users}
+          currentUserId={user.id}   // 🔥 bunu əlavə et
           onClose={() => setSelectedTask(null)}
           onSave={async (updates) => {
             const taskId = selectedTask.id;
@@ -1723,132 +1767,132 @@ return data.session?.access_token ?? null;
               <div style={{ display: "flex", gap: 8 }}>
                 {/* EXPORT */}
                 {can("tasks.export.drawer") && (
-                <button
-                  onClick={async () => {
-                    try {
-                      // 🚀 XLSX only when clicked
-                      const XLSX = await import("xlsx");
+                  <button
+                    onClick={async () => {
+                      try {
+                        // 🚀 XLSX only when clicked
+                        const XLSX = await import("xlsx");
 
-                      const data = [{
-                        "Başlıq": viewTask.title,
-                        "Təsvir": viewTask.description ?? "",
-                        "Status": viewTask.status.replace("_", " "),
-                        "Prioritet": viewTask.priority,
-                        "Başlama tarixi": formatDMY(viewTask.start_date),
-                        "Son tarix": formatDMY(viewTask.due_date),
-                        "Təyin olunan": (viewTask.assigned_to ?? []).join(", "),
-                        "Fayllar": (viewTask.files ?? []).map(f => f.name).join(", "),
-                        "Yaradılma tarixi": formatDMY(viewTask.created_at, true),
-                        "Yenilənmə tarixi": formatDMY(viewTask.updated_at, true),
-                      }];
+                        const data = [{
+                          "Başlıq": viewTask.title,
+                          "Təsvir": viewTask.description ?? "",
+                          "Status": viewTask.status.replace("_", " "),
+                          "Prioritet": viewTask.priority,
+                          "Başlama tarixi": formatDMY(viewTask.start_date),
+                          "Son tarix": formatDMY(viewTask.due_date),
+                          "Təyin olunan": (viewTask.assigned_to ?? []).join(", "),
+                          "Fayllar": (viewTask.files ?? []).map(f => f.name).join(", "),
+                          "Yaradılma tarixi": formatDMY(viewTask.created_at, true),
+                          "Yenilənmə tarixi": formatDMY(viewTask.updated_at, true),
+                        }];
 
-                      const worksheet = XLSX.utils.json_to_sheet(data);
-                      const workbook = XLSX.utils.book_new();
-                      XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıq");
+                        const worksheet = XLSX.utils.json_to_sheet(data);
+                        const workbook = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıq");
 
-                      // təhlükəsiz file adı
-                      const safeName = (viewTask.title || "task")
-                        .toLowerCase()
-                        .replace(/\s+/g, "-")
-                        .replace(/[^a-z0-9\-]/g, "")
-                        .slice(0, 50);
+                        // təhlükəsiz file adı
+                        const safeName = (viewTask.title || "task")
+                          .toLowerCase()
+                          .replace(/\s+/g, "-")
+                          .replace(/[^a-z0-9\-]/g, "")
+                          .slice(0, 50);
 
-                      XLSX.writeFile(workbook, `${safeName}.xlsx`);
+                        XLSX.writeFile(workbook, `${safeName}.xlsx`);
 
-                    } catch (err) {
-                      console.error("Drawer export error:", err);
-                    }
-                  }}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #e5e7eb",
-                    fontWeight: 700,
-                    fontSize: 12,
-                  }}
-                >
-                  Export
-                </button>
+                      } catch (err) {
+                        console.error("Drawer export error:", err);
+                      }
+                    }}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #e5e7eb",
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                  >
+                    Export
+                  </button>
                 )}
 
                 {/* PRINT */}
                 {can("tasks.print.drawer") && (
-                <button
-                  onClick={() => window.print()}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #e5e7eb",
-                    fontWeight: 700,
-                    fontSize: 12,
-                  }}
-                >
-                  Print
-                </button>
+                  <button
+                    onClick={() => window.print()}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #e5e7eb",
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                  >
+                    Print
+                  </button>
                 )}
-{can("tasks.edit.drawer") && (
-                <button
-                  onClick={() => {
-                    setDrawerOpen(false);
-                    setTimeout(() => {
-                      setSelectedTask(viewTask);
-                    }, 200);
-                  }}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #c7d2fe",
-                    background: "#eef2ff",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    color: "#4338ca",
-                  }}
-                >
-                  Edit
-                </button>
-)}
-{can("tasks.delete.drawer") && (
-                <button
-                  onClick={async () => {
-                    if (!confirm("Bu tapşırıq silinsin?")) return;
-
-                    const snapshot = tasksBy;
-                    const f = findTask(tasksBy, viewTask.id);
-                    if (!f) return;
-
-                    const next: TasksByStatus = {
-                      TODO: [...tasksBy.TODO],
-                      IN_PROGRESS: [...tasksBy.IN_PROGRESS],
-                      DONE: [...tasksBy.DONE],
-                      CANCELLED: [...tasksBy.CANCELLED],
-                    };
-
-                    next[f.status].splice(f.index, 1);
-                    setTasksBy(next);
-
-                    try {
-                      await deleteTask(viewTask.id);
-                      pushActivity(`• Deleted "${viewTask.title}"`);
+                {can("tasks.edit.drawer") && (
+                  <button
+                    onClick={() => {
                       setDrawerOpen(false);
-                      setTimeout(() => setViewTask(null), 200);
-                    } catch {
-                      setTasksBy(snapshot);
-                      pushActivity(`• Delete failed "${viewTask.title}"`);
-                    }
-                  }}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #fecaca",
-                    background: "#fee2e2",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    color: "#b91c1c",
-                  }}
-                >
-                  Delete
-                </button>
-)}
+                      setTimeout(() => {
+                        setSelectedTask(viewTask);
+                      }, 200);
+                    }}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #c7d2fe",
+                      background: "#eef2ff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      color: "#4338ca",
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {can("tasks.delete.drawer") && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Bu tapşırıq silinsin?")) return;
+
+                      const snapshot = tasksBy;
+                      const f = findTask(tasksBy, viewTask.id);
+                      if (!f) return;
+
+                      const next: TasksByStatus = {
+                        TODO: [...tasksBy.TODO],
+                        IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+                        DONE: [...tasksBy.DONE],
+                        CANCELLED: [...tasksBy.CANCELLED],
+                      };
+
+                      next[f.status].splice(f.index, 1);
+                      setTasksBy(next);
+
+                      try {
+                        await deleteTask(viewTask.id);
+                        pushActivity(`• Deleted "${viewTask.title}"`);
+                        setDrawerOpen(false);
+                        setTimeout(() => setViewTask(null), 200);
+                      } catch {
+                        setTasksBy(snapshot);
+                        pushActivity(`• Delete failed "${viewTask.title}"`);
+                      }
+                    }}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #fecaca",
+                      background: "#fee2e2",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      color: "#b91c1c",
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
 
                 <button
                   onClick={() => {
@@ -1890,6 +1934,61 @@ return data.session?.access_token ?? null;
                   </div>
                 }
               />
+
+              {/* STATUS ACTIONS */}
+              <div className="mt-3 flex gap-2">
+
+                {viewTask.status !== "DONE" && (
+                  <button
+                    onClick={async () => {
+                      const nextStatus = STATUS_FLOW[viewTask.status as Status]?.[0];
+                      if (!nextStatus) return;
+
+                      await updateTask(viewTask.id, { status: nextStatus });
+                      await loadTasks();
+
+                      setViewTask((prev: any) => prev ? { ...prev, status: nextStatus } : prev)
+                    }}
+                    className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-indigo-700"
+                  >
+                    {viewTask.status === "TODO" && "Start Task"}
+                    {viewTask.status === "IN_PROGRESS" && "Complete Task"}
+                  </button>
+                )}
+
+                {viewTask.status === "DONE" && isCreator && !isAssigned && (
+                  <button
+                    onClick={async () => {
+                      await updateTask(viewTask.id, { status: "TODO" })
+                      await loadTasks()
+
+                      setViewTask((prev: any) =>
+                        prev ? { ...prev, status: "TODO" } : prev
+                      )
+                    }}
+                    className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-300"
+                  >
+                    Reopen Task
+                  </button>
+                )}
+
+                {viewTask.status === "CANCELLED" && (isRehber || isAdmin) && (
+                  <button
+                    onClick={async () => {
+                      await updateTask(viewTask.id, { status: "TODO" })
+                      await loadTasks()
+
+                      setViewTask((prev: any) =>
+                        prev ? { ...prev, status: "TODO" } : prev
+                      )
+                    }}
+                    className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-300"
+                  >
+                    Reopen Task
+                  </button>
+                )}
+
+              </div>
 
               <DrawerRow
                 label="Prioritet"
@@ -1944,6 +2043,11 @@ return data.session?.access_token ?? null;
                 value={formatDMY(viewTask.updated_at, true)}
               />
 
+              <DrawerRow
+                label="Yeniləyən İstifadəçi"
+                value={viewTask.updated_by_name ?? "-"}
+              />
+
 
 
               {viewTask.files?.length ? (
@@ -1994,201 +2098,201 @@ return data.session?.access_token ?? null;
 
               {/* COMMENTS SECTION */}
               {viewTask.allow_comments !== false && (
-              <div style={{ marginTop: 30 }}>
-                <h3 style={{ fontWeight: 900, marginBottom: 10 }}>
-                  💬 Şərhlər
-                </h3>
+                <div style={{ marginTop: 30 }}>
+                  <h3 style={{ fontWeight: 900, marginBottom: 10 }}>
+                    💬 Şərhlər
+                  </h3>
 
-                {comments.length ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {comments.map((c) => {
-                      // 🔥 müəllifdən başqa oxuyanlar
-                      const seenBy =
-                        Array.isArray(c.reads)
-                          ? c.reads.filter(
-                            (r: any) => r.employee_id !== c.author_id
-                          )
-                          : [];
+                  {comments.length ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {comments.map((c) => {
+                        // 🔥 müəllifdən başqa oxuyanlar
+                        const seenBy =
+                          Array.isArray(c.reads)
+                            ? c.reads.filter(
+                              (r: any) => r.employee_id !== c.author_id
+                            )
+                            : [];
 
-                      return (
-                        <div
-                          key={c.id}
-                          style={{
-                            background: "#f3f4f6",
-                            padding: 12,
-                            borderRadius: 10,
-                          }}
-                        >
-                          {/* HEADER */}
-                          <div style={{ fontSize: 12, color: "#6b7280" }}>
-                            {c.author_name} • {formatDMY(c.created_at, true)}
-                          </div>
-
-                          {/* 🔥 SEEN INFO */}
-                          {seenBy.length > 0 && (
-                            <div className="text-xs text-green-600 mt-1">
-                              {seenBy
-                                .map(
-                                  (r: any) =>
-                                    `${r.employees?.ad ?? ""} ${r.employees?.soyad ?? ""
-                                      }`.trim()
-                                )
-                                .join(", ")} tərəfindən görüldü
-                            </div>
-                          )}
-
-                          {/* MESSAGE */}
-                          {c.message && (
-                            <div style={{ marginTop: 6, fontWeight: 600 }}>
-                              <div
-                                dangerouslySetInnerHTML={{ __html: c.message }}
-                                style={{ marginTop: 6 }}
-                              />
-                            </div>
-                          )}
-
-                          {/* FILES */}
-                          {Array.isArray(c.files) && c.files.length > 0 && (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {c.files.map((f: any, i: number) => {
-                                const ext = f.name?.split(".").pop()?.toLowerCase();
-
-                                const getIcon = () => {
-                                  if (["png", "jpg", "jpeg", "webp"].includes(ext))
-                                    return "🖼️";
-                                  if (["pdf"].includes(ext)) return "📄";
-                                  if (["doc", "docx"].includes(ext)) return "📝";
-                                  if (["xls", "xlsx"].includes(ext)) return "📊";
-                                  return "📎";
-                                };
-
-                                return (
-                                  <div
-                                    key={i}
-                                    onClick={async () => {
-                                      if (!f?.path) return;
-
-                                      const { data, error } = await supabase.storage
-                                        .from("task-comment-files")
-                                        .createSignedUrl(f.path, 60);
-
-                                      if (error || !data?.signedUrl) {
-                                        console.error("Signed URL error:", error);
-                                        return;
-                                      }
-
-                                      window.location.href = data.signedUrl;
-                                    }}
-                                    className="flex items-center gap-2 bg-white border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all px-3 py-2 rounded-xl cursor-pointer text-sm"
-                                  >
-                                    <span className="text-lg">{getIcon()}</span>
-
-                                    <div className="flex flex-col">
-                                      <span className="font-medium text-gray-800 truncate max-w-[160px]">
-                                        {f.name}
-                                      </span>
-                                      {f.size && (
-                                        <span className="text-xs text-gray-400">
-                                          {(f.size / 1024).toFixed(1)} KB
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ color: "#9ca3af", marginBottom: 10 }}>
-                    Hələ şərh yoxdur
-                  </div>
-                )}
-
-
-
-                {/* ADD COMMENT */}
-                {/* ADD COMMENT */}
-                <div className="mt-4 border rounded-xl p-3 bg-white">
-
-                  {/* TOOLBAR */}
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      onClick={() => editor?.chain().focus().toggleBold().run()}
-                      className="px-2 py-1 border rounded text-sm"
-                    >
-                      B
-                    </button>
-
-                    <button
-                      onClick={() => editor?.chain().focus().toggleItalic().run()}
-                      className="px-2 py-1 border rounded text-sm"
-                    >
-                      I
-                    </button>
-
-                    <label className="px-2 py-1 border rounded text-sm cursor-pointer">
-                      📎 Fayl
-                      <input
-                        type="file"
-                        hidden
-                        multiple
-                        onChange={(e) =>
-                          setCommentFiles(Array.from(e.target.files || []))
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  {/* EDITOR */}
-                  <div className="border rounded-lg p-2 min-h-[100px]">
-                    {editor && <EditorContent editor={editor} />}
-                  </div>
-
-                  {/* SELECTED FILES PREVIEW */}
-                  {commentFiles.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {commentFiles.map((file, i) => (
-                        <div
-                          key={i}
-                          className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg text-sm"
-                        >
-                          <span>📎 {file.name}</span>
-                          <button
-                            onClick={() =>
-                              setCommentFiles((prev) =>
-                                prev.filter((_, index) => index !== i)
-                              )
-                            }
-                            className="text-red-500"
+                        return (
+                          <div
+                            key={c.id}
+                            style={{
+                              background: "#f3f4f6",
+                              padding: 12,
+                              borderRadius: 10,
+                            }}
                           >
-                            ✖
-                          </button>
-                        </div>
-                      ))}
+                            {/* HEADER */}
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>
+                              {c.author_name} • {formatDMY(c.created_at, true)}
+                            </div>
+
+                            {/* 🔥 SEEN INFO */}
+                            {seenBy.length > 0 && (
+                              <div className="text-xs text-green-600 mt-1">
+                                {seenBy
+                                  .map(
+                                    (r: any) =>
+                                      `${r.employees?.ad ?? ""} ${r.employees?.soyad ?? ""
+                                        }`.trim()
+                                  )
+                                  .join(", ")} tərəfindən görüldü
+                              </div>
+                            )}
+
+                            {/* MESSAGE */}
+                            {c.message && (
+                              <div style={{ marginTop: 6, fontWeight: 600 }}>
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: c.message }}
+                                  style={{ marginTop: 6 }}
+                                />
+                              </div>
+                            )}
+
+                            {/* FILES */}
+                            {Array.isArray(c.files) && c.files.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {c.files.map((f: any, i: number) => {
+                                  const ext = f.name?.split(".").pop()?.toLowerCase();
+
+                                  const getIcon = () => {
+                                    if (["png", "jpg", "jpeg", "webp"].includes(ext))
+                                      return "🖼️";
+                                    if (["pdf"].includes(ext)) return "📄";
+                                    if (["doc", "docx"].includes(ext)) return "📝";
+                                    if (["xls", "xlsx"].includes(ext)) return "📊";
+                                    return "📎";
+                                  };
+
+                                  return (
+                                    <div
+                                      key={i}
+                                      onClick={async () => {
+                                        if (!f?.path) return;
+
+                                        const { data, error } = await supabase.storage
+                                          .from("task-comment-files")
+                                          .createSignedUrl(f.path, 60);
+
+                                        if (error || !data?.signedUrl) {
+                                          console.error("Signed URL error:", error);
+                                          return;
+                                        }
+
+                                        window.location.href = data.signedUrl;
+                                      }}
+                                      className="flex items-center gap-2 bg-white border border-gray-200 hover:border-indigo-400 hover:shadow-md transition-all px-3 py-2 rounded-xl cursor-pointer text-sm"
+                                    >
+                                      <span className="text-lg">{getIcon()}</span>
+
+                                      <div className="flex flex-col">
+                                        <span className="font-medium text-gray-800 truncate max-w-[160px]">
+                                          {f.name}
+                                        </span>
+                                        {f.size && (
+                                          <span className="text-xs text-gray-400">
+                                            {(f.size / 1024).toFixed(1)} KB
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ color: "#9ca3af", marginBottom: 10 }}>
+                      Hələ şərh yoxdur
                     </div>
                   )}
 
-                  {/* SUBMIT BUTTON */}
-                  <button
-                    onClick={async () => {
-                      if (!newComment.trim() && commentFiles.length === 0) return;
-
-                      await handleAddComment();
 
 
-                      // 🔥 editor temizle
-                      editor?.commands.clearContent();
-                    }}
-                    className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-                  >
-                    Göndər
-                  </button>
+                  {/* ADD COMMENT */}
+                  {/* ADD COMMENT */}
+                  <div className="mt-4 border rounded-xl p-3 bg-white">
+
+                    {/* TOOLBAR */}
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        onClick={() => editor?.chain().focus().toggleBold().run()}
+                        className="px-2 py-1 border rounded text-sm"
+                      >
+                        B
+                      </button>
+
+                      <button
+                        onClick={() => editor?.chain().focus().toggleItalic().run()}
+                        className="px-2 py-1 border rounded text-sm"
+                      >
+                        I
+                      </button>
+
+                      <label className="px-2 py-1 border rounded text-sm cursor-pointer">
+                        📎 Fayl
+                        <input
+                          type="file"
+                          hidden
+                          multiple
+                          onChange={(e) =>
+                            setCommentFiles(Array.from(e.target.files || []))
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    {/* EDITOR */}
+                    <div className="border rounded-lg p-2 min-h-[100px]">
+                      {editor && <EditorContent editor={editor} />}
+                    </div>
+
+                    {/* SELECTED FILES PREVIEW */}
+                    {commentFiles.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {commentFiles.map((file, i) => (
+                          <div
+                            key={i}
+                            className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg text-sm"
+                          >
+                            <span>📎 {file.name}</span>
+                            <button
+                              onClick={() =>
+                                setCommentFiles((prev) =>
+                                  prev.filter((_, index) => index !== i)
+                                )
+                              }
+                              className="text-red-500"
+                            >
+                              ✖
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* SUBMIT BUTTON */}
+                    <button
+                      onClick={async () => {
+                        if (!newComment.trim() && commentFiles.length === 0) return;
+
+                        await handleAddComment();
+
+
+                        // 🔥 editor temizle
+                        editor?.commands.clearContent();
+                      }}
+                      className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+                    >
+                      Göndər
+                    </button>
+                  </div>
                 </div>
-              </div>
               )}
             </div>
 
@@ -2379,14 +2483,26 @@ const Column = React.memo(function Column({
   tasks,
   onSelect,
   can,
+  currentUserId,
+  userRole,
+  updateTask,
+  loadTasks,
+  users
 }: {
   id: Status;
   title: string;
   tasks: Task[];
   onSelect: (t: Task) => void;
   can: (key: string) => boolean;
+  currentUserId: string;
+  userRole: string;
+  updateTask: (id: string, updates: any) => Promise<void>;
+  loadTasks: () => void;
+  users: UserInfo[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const isCancelledLocked =
+    id === "CANCELLED" && userRole === "EMPLOYEE";
 
   return (
     <div
@@ -2405,8 +2521,14 @@ const Column = React.memo(function Column({
     >
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold text-gray-800 tracking-wide">
+        <h3 className="font-bold text-gray-800 tracking-wide flex items-center gap-2">
           {title.replace("_", " ")}
+
+          {isCancelledLocked && (
+            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
+              🔒 locked
+            </span>
+          )}
         </h3>
 
         <span
@@ -2431,11 +2553,16 @@ const Column = React.memo(function Column({
         <div className="space-y-4 overflow-y-auto pr-1 flex-1">
           {tasks.map((task) => (
             <TaskCard
-  key={task.id}
-  task={task}
-  onSelect={onSelect}
-  can={can}
-/>
+              key={task.id}
+              task={task}
+              onSelect={onSelect}
+              can={can}
+              currentUserId={currentUserId}
+              userRole={userRole}
+              updateTask={updateTask}
+              loadTasks={loadTasks}
+              users={users}
+            />
           ))}
         </div>
       </SortableContext>
@@ -2443,18 +2570,75 @@ const Column = React.memo(function Column({
   );
 });
 
+function getTaskProgress(task: Task) {
+  if (!task.start_date || !task.due_date) return 0;
+
+  const start = new Date(task.start_date).getTime();
+  const end = new Date(task.due_date).getTime();
+  const now = Date.now();
+
+  if (now <= start) return 0;
+  if (now >= end) return 100;
+
+  const total = end - start;
+  const passed = now - start;
+
+  return Math.round((passed / total) * 100);
+}
+
 
 /* CARD */
 const TaskCard = React.memo(function TaskCard({
   task,
   onSelect,
   can,
+  currentUserId,
+  userRole,
+  updateTask,
+  loadTasks,
+  users
 }: {
   task: Task;
   onSelect: (t: Task) => void;
   can: (key: string) => boolean;
+  currentUserId: string;
+  userRole: string;
+  users: UserInfo[];
+  updateTask: (id: string, updates: any) => Promise<void>;
+  loadTasks: () => void;
 }) {
-  const isDone = task.status === "DONE";
+  const isDone = task.status === "DONE" || task.status === "CANCELLED";
+  const progress = getTaskProgress(task);
+
+
+  /* DUE STATUS */
+  const now = new Date();
+  let dueStatus: "normal" | "soon" | "overdue" = "normal";
+
+  if (task.due_date) {
+    const due = new Date(task.due_date);
+    const diff = due.getTime() - now.getTime();
+    const hours = diff / (1000 * 60 * 60);
+
+    if (hours < 0 && !isDone) {
+      dueStatus = "overdue";
+    } else if (hours <= 48 && hours >= 0 && !isDone) {
+      dueStatus = "soon";
+    }
+  }
+
+  const bgColor =
+    dueStatus === "overdue"
+      ? "bg-red-50 border-red-300"
+      : dueStatus === "soon"
+        ? "bg-yellow-50 border-yellow-300"
+        : task.status === "TODO"
+          ? "bg-white border-slate-200"
+          : task.status === "IN_PROGRESS"
+            ? "bg-blue-50 border-blue-200"
+            : task.status === "DONE"
+              ? "bg-green-50 border-green-200"
+              : "bg-red-50 border-red-200";
 
   const {
     attributes,
@@ -2468,6 +2652,17 @@ const TaskCard = React.memo(function TaskCard({
     disabled: isDone || !can("tasks.edit.list"),
   });
 
+  const isAssignedUser =
+    task.assigned_to?.includes(currentUserId);
+
+  const isCreator = task.created_by === currentUserId
+  const isAssigned = task.assigned_to?.includes(currentUserId)
+  const isRehber = false // bunu parentdən göndərmək daha yaxşıdır
+  const isCancelledLocked =
+    task.status === "CANCELLED" &&
+    userRole === "EMPLOYEE" &&
+    task.created_by !== currentUserId;
+
   return (
     <div
       ref={setNodeRef}
@@ -2478,23 +2673,25 @@ const TaskCard = React.memo(function TaskCard({
       }}
       {...attributes}
       {...(!isDone ? listeners : {})}
-      className={` bg-white
-  p-4
-  rounded-2xl
-  shadow-md
-  hover:shadow-xl
-  transition-all
-  border
-  border-slate-200
-  select-none
-  relative ${isDone
+      className={`
+      ${bgColor}
+      p-4
+      rounded-2xl
+      shadow-md
+      hover:shadow-xl
+      transition-all
+      border
+      select-none
+      relative
+      ${isDone
           ? "cursor-default opacity-70"
           : "hover:shadow-md cursor-grab active:cursor-grabbing"
-        }`}
+        }
+    `}
       onClick={(e) => {
-        e.stopPropagation();
-        onSelect(task);
-      }}
+  e.stopPropagation();
+  onSelect(task);
+}}
     >
 
       {task.creator_name && (
@@ -2503,15 +2700,22 @@ const TaskCard = React.memo(function TaskCard({
         </div>
       )}
 
-      <div className="font-semibold text-gray-900">
+      <div className="font-semibold text-gray-900 flex items-center gap-2">
         {task.title}
+
+        {userRole === "EMPLOYEE" &&
+          (task.status === "DONE" || task.status === "CANCELLED") && (
+            <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-700">
+              🔒
+            </span>
+          )}
       </div>
-
-
 
       <div className="absolute top-3 right-3 text-[10px] text-gray-400 font-semibold">
-        #{task.id.slice(0, 4)}
+        #{task.id?.slice(0, 4)}
       </div>
+
+
 
       <div className="
   mt-2
@@ -2524,50 +2728,65 @@ const TaskCard = React.memo(function TaskCard({
   text-xs
   text-gray-600
 ">
+
         <PriorityPill p={String(task.priority)} />
 
-        {task.files?.length ? (
-          <div className="mt-2 text-xs">
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
+        {/* ACTION BUTTON */}
+        {task.status !== "DONE" && task.status !== "CANCELLED" && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
 
-                if (!task.files?.length) return;
+              const nextStatus = STATUS_FLOW[task.status as Status]?.[0];
+              if (!nextStatus) return;
 
-                try {
-                  for (const file of task.files) {
-                    if (!file?.path) continue;
+              await updateTask(task.id, { status: nextStatus });
+              loadTasks();
+            }}
+            className="mt-3 w-full bg-indigo-600 text-white py-1.5 rounded-lg text-xs hover:bg-indigo-700"
+          >
+            {task.status === "TODO" && "Start Task"}
+            {task.status === "IN_PROGRESS" && "Complete Task"}
+          </button>
+        )}
 
-                    const { data, error } = await supabase.storage
-                      .from("task-files")
-                      .createSignedUrl(file.path, 60);
+        {task.status === "DONE" && isCreator && !isAssigned && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation()
+              await updateTask(task.id, { status: "TODO" })
+              loadTasks()
+            }}
+            className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
+          >
+            Reopen Task
+          </button>
+        )}
 
-                    if (error || !data?.signedUrl) {
-                      console.error("Signed URL error:", error);
-                      continue;
-                    }
+        {task.status === "CANCELLED" && isRehber && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation()
 
-                    // 🔥 Pure download (no open, no popup)
-                    window.location.assign(data.signedUrl);
-
-                    // Kiçik delay — browser bloklamasın deyə
-                    await new Promise((res) => setTimeout(res, 300));
-                  }
-                } catch (err) {
-                  console.error("File download error:", err);
-                }
-              }}
-              className="text-indigo-600 hover:underline"
-            >
-              📎 {task.files.length} file
-            </button>
-          </div>
-        ) : null}
-
-        <span className="text-gray-500">
-          {task.due_date ? `Due: ${task.due_date}` : ""}
-        </span>
+              await updateTask(task.id, { status: "TODO" })
+              loadTasks()
+            }}
+            className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
+          >
+            Restore Task
+          </button>
+        )}
       </div>
+
+      {/* PROGRESS LABEL */}
+      {!isDone && task.start_date && task.due_date && (
+        <div className="w-full h-1.5 bg-gray-200 rounded mt-1">
+          <div
+            className="h-full bg-indigo-500 rounded"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 });
@@ -2578,13 +2797,19 @@ const TaskCard = React.memo(function TaskCard({
 type EditDrawerProps = {
   task: Task;
   users: UserInfo[];
+  currentUserId: string;
   onClose: () => void;
   onSave: (updates: Partial<Task>) => Promise<void> | void;
 };
 
 
 
-function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
+function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerProps) {
+
+  const isAssignedUser =
+    task.assigned_to?.includes(currentUserId);
+
+
   const [form, setForm] = useState<Partial<Task>>({
     title: task.title,
     description: task.description ?? "",
@@ -2597,7 +2822,11 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
 
 
 
+
+
   const [newFiles, setNewFiles] = useState<File[]>([]);
+
+
 
   useEffect(() => {
     setForm({
@@ -2629,56 +2858,66 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
         {/* CONTENT */}
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
 
-          {/* TITLE */}
-          <div>
-            <label className="text-sm font-medium text-gray-700">Title</label>
-            <input
-              className="w-full border rounded-lg px-3 py-2 mt-1"
-              value={form.title ?? ""}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, title: e.target.value }))
-              }
-            />
-          </div>
 
-          {/* DESCRIPTION */}
+          <>
+            {/* TITLE */}
+            <div>
+              <label className="text-sm font-medium text-gray-700">Title</label>
+              <input
+
+                className="w-full border rounded-lg px-3 py-2 mt-1 disabled:bg-gray-100"
+                value={form.title ?? ""}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, title: e.target.value }))
+                }
+              />
+            </div>
+
+            {/* DESCRIPTION */}
+            <div>
+              <label className="text-sm font-medium text-gray-700">Description</label>
+              <textarea
+
+                className="w-full border rounded-lg px-3 py-2 mt-1 min-h-[120px] disabled:bg-gray-100"
+                value={form.description ?? ""}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, description: e.target.value }))
+                }
+              />
+            </div>
+          </>
+
+
+          {/* STATUS */}
           <div>
-            <label className="text-sm font-medium text-gray-700">Description</label>
-            <textarea
-              className="w-full border rounded-lg px-3 py-2 mt-1 min-h-[120px]"
-              value={form.description ?? ""}
+            <label className="text-sm font-medium text-gray-700">Status</label>
+            <select
+              className="w-full border rounded-lg px-3 py-2 mt-1"
+              value={form.status as string}
               onChange={(e) =>
-                setForm((p) => ({ ...p, description: e.target.value }))
+                setForm((p) => ({ ...p, status: e.target.value as any }))
               }
-            />
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace("_", " ")}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* GRID SECTION */}
+
           <div className="grid grid-cols-2 gap-4">
 
-            {/* STATUS */}
-            <div>
-              <label className="text-sm font-medium text-gray-700">Status</label>
-              <select
-                className="w-full border rounded-lg px-3 py-2 mt-1"
-                value={form.status as string}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, status: e.target.value as any }))
-                }
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s.replace("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
+
 
             {/* PRIORITY */}
             <div>
               <label className="text-sm font-medium text-gray-700">Priority</label>
               <select
-                className="w-full border rounded-lg px-3 py-2 mt-1"
+
+                className="w-full border rounded-lg px-3 py-2 mt-1 disabled:bg-gray-100"
                 value={form.priority as string}
                 onChange={(e) =>
                   setForm((p) => ({ ...p, priority: e.target.value as any }))
@@ -2695,6 +2934,7 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
             <div>
               <label className="text-sm font-medium text-gray-700">Start date</label>
               <input
+
                 type="date"
                 className="w-full border rounded-lg px-3 py-2 mt-1"
                 value={(form.start_date ?? "") as string}
@@ -2711,6 +2951,7 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
             <div>
               <label className="text-sm font-medium text-gray-700">Due date</label>
               <input
+
                 type="date"
                 className="w-full border rounded-lg px-3 py-2 mt-1"
                 value={(form.due_date ?? "") as string}
@@ -2731,6 +2972,7 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
               </label>
 
               <Select
+
                 mode="multiple"
                 allowClear
                 placeholder="User seç"
@@ -2750,7 +2992,9 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
             </div>
           </div>
 
+
           {/* FILES */}
+
           <div>
             <label className="text-sm font-medium text-gray-700">Add Files</label>
             <input
@@ -2762,6 +3006,7 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
               }
             />
           </div>
+
 
         </div>
 
@@ -2776,7 +3021,13 @@ function EditDrawer({ task, users, onClose, onSave }: EditDrawerProps) {
 
           <button
             onClick={async () => {
-              await onSave(form);
+
+              const payload = isAssignedUser
+                ? { status: form.status }
+                : form;
+
+              await onSave(payload);
+
             }}
             className="bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700"
           >

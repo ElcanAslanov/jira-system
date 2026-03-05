@@ -9,6 +9,9 @@ type Perm = { key: string; label: string };
 type Company = { id: number; name: string };
 
 export default function RolePermissionsPage() {
+  const [guides, setGuides] = useState<any[]>([]);
+const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
+
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Perm[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -24,28 +27,23 @@ export default function RolePermissionsPage() {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(true);
   const [isCompaniesOpen, setIsCompaniesOpen] = useState(true);
-const [ready, setReady] = useState(false);
-useEffect(() => {
-  const checkSession = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      setReady(true);
-    }
-  };
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        setReady(true);
+      }
+    };
 
-  checkSession();
-}, []);
+    checkSession();
+  }, []);
   /* ================= SIDEBAR ORDER ================= */
 
   const sidebarGroups = [
     {
       title: "Dashboard",
-      permissions: [
-        "admin_dashboard.view",
-        "rehber_dashboard.view",
-        "boss_dashboard.view",
-        "employee_dashboard.view",
-      ],
+      permissions: ["dashboard.view"],
     },
     {
       title: "İşçilər",
@@ -61,31 +59,39 @@ useEffect(() => {
       ],
     },
     {
-  title: "Tapşırıqlar",
-  permissions: [
-    "tasks.view",
-    "tasks.create",
-  ],
-},
-{
-  title: "Tapşırıq Button Yetkiləri",
-  permissions: [
-    // LIST / BOARD BUTTONS
-    "tasks.edit.list",
-    "tasks.delete.list",
-    "tasks.export.list",
-    "tasks.print.list",
+      title: "Tapşırıqlar",
+      permissions: [
+        "tasks.view",
+        "tasks.create",
+      ],
+    },
+    {
+      title: "Tapşırıq Button Yetkiləri",
+      permissions: [
+        // LIST / BOARD BUTTONS
+        "tasks.edit.list",
+        "tasks.delete.list",
+        "tasks.export.list",
+        "tasks.print.list",
 
-    // DRAWER BUTTONS
-    "tasks.edit.drawer",
-    "tasks.delete.drawer",
-    "tasks.export.drawer",
-    "tasks.print.drawer",
-  ],
-},
+        // DRAWER BUTTONS
+        "tasks.edit.drawer",
+        "tasks.delete.drawer",
+        "tasks.export.drawer",
+        "tasks.print.drawer",
+      ],
+    },
     {
       title: "Dövrlü Tapşırıqlar",
       permissions: ["recurring.view", "recurring.create"],
+    },
+    {
+      title: "Dövrlü Tapşırıq Button Yetkiləri",
+      permissions: [
+        "recurring.view.button",
+        "recurring.pause.button",
+        "recurring.delete.button",
+      ],
     },
     {
       title: "Yetkilər",
@@ -97,65 +103,85 @@ useEffect(() => {
     },
   ];
 
+  
+
   /* ================= LOAD INITIAL ================= */
 
   useEffect(() => {
-  if (!ready) return;
+    if (!ready) return;
 
-  async function load() {
-    const { data: rolesData } = await supabase
-      .from("roles")
-      .select("id,name")
-      .order("name");
+    async function load() {
+      const { data: rolesData } = await supabase
+        .from("roles")
+        .select("id,name")
+        .order("name");
 
-    const { data: permData } = await supabase
-      .from("permissions")
-      .select("key,label");
+      const { data: permData } = await supabase
+        .from("permissions")
+        .select("key,label");
 
-    const { data: companyData } = await supabase
-      .from("companies")
-      .select("id,name")
-      .order("name");
+      const { data: companyData } = await supabase
+        .from("companies")
+        .select("id,name")
+        .order("name");
 
-    setRoles(rolesData || []);
-    setPermissions(permData || []);
-    setCompanies(companyData || []);
+      setRoles(rolesData || []);
+      setPermissions(permData || []);
+      setCompanies(companyData || []);
 
-    if (rolesData?.length) {
-      setSelectedRole(rolesData[0].id);
+      if (rolesData?.length) {
+        setSelectedRole(rolesData[0].id);
+      }
     }
-  }
 
-  load();
-}, [ready]);
+    load();
+  }, [ready]);
 
   /* ================= LOAD ROLE DATA ================= */
 
   useEffect(() => {
     if (!selectedRole) return;
 
-    async function loadRoleData() {
-      const { data: perms } = await supabase
-        .from("role_permissions")
-        .select("permission_key")
-        .eq("role_id", selectedRole);
+   async function loadRoleData() {
+  const { data: perms } = await supabase
+    .from("role_permissions")
+    .select("permission_key")
+    .eq("role_id", selectedRole);
 
-      const { data: comps } = await supabase
-        .from("role_company_access")
-        .select("company_id")
-        .eq("role_id", selectedRole);
+  const { data: comps } = await supabase
+    .from("role_company_access")
+    .select("company_id")
+    .eq("role_id", selectedRole);
 
-      setSelectedPerms(
-        (perms || []).map((p: any) => p.permission_key)
-      );
+  const { data: roleGuides } = await supabase
+    .from("role_assignable_guides")
+    .select("guide_id")
+    .eq("role_id", selectedRole);
 
-      setSelectedCompanies(
-        (comps || []).map((c: any) => c.company_id)
-      );
-    }
+  setSelectedPerms(
+    (perms || []).map((p: any) => p.permission_key)
+  );
+
+  setSelectedCompanies(
+    (comps || []).map((c: any) => c.company_id)
+  );
+
+  setSelectedGuides(
+    (roleGuides || []).map((g: any) => g.guide_id)
+  );
+}
 
     loadRoleData();
   }, [selectedRole]);
+
+  useEffect(() => {
+  if (!selectedCompanies.length) {
+    setGuides([]);
+    return;
+  }
+
+  loadGuides();
+}, [selectedCompanies]);
 
   /* ================= TOGGLE ================= */
 
@@ -167,6 +193,14 @@ useEffect(() => {
     );
   }
 
+  function toggleGuide(id: string) {
+  setSelectedGuides(prev =>
+    prev.includes(id)
+      ? prev.filter(g => g !== id)
+      : [...prev, id]
+  );
+}
+
   function toggleCompany(id: number) {
     setSelectedCompanies((prev) =>
       prev.includes(id)
@@ -174,6 +208,23 @@ useEffect(() => {
         : [...prev, id]
     );
   }
+
+async function loadGuides() {
+
+  const { data } = await supabase
+    .from("employees")
+    .select(`
+      id,
+      ad,
+      soyad,
+      company_id,
+      roles!inner(name)
+    `)
+    .in("company_id", selectedCompanies)
+    .eq("roles.name", "REHBER");
+
+  setGuides(data || []);
+}
 
   /* ================= SAVE ================= */
 
@@ -214,6 +265,24 @@ useEffect(() => {
       );
     }
 
+    // 5️⃣ rehberləri sil
+await supabase
+  .from("role_assignable_guides")
+  .delete()
+  .eq("role_id", selectedRole);
+
+// 6️⃣ rehberləri insert
+
+if (selectedGuides.length > 0) {
+ await supabase.from("role_assignable_guides").insert(
+  selectedGuides.map((guide_id) => ({
+    role_id: selectedRole,
+    guide_id,
+    company_id: guides.find(g => g.id === guide_id)?.company_id
+  }))
+);
+}
+
     setLoading(false);
     alert("Yadda saxlanıldı ✅");
   }
@@ -221,18 +290,18 @@ useEffect(() => {
   /* ================= SEARCH ================= */
 
   const filtered = useMemo(() => {
-  if (!search) return permissions;
+    if (!search) return permissions;
 
-  return permissions.filter((p) => {
-    const key = p.key?.toLowerCase() || "";
-    const label = p.label?.toLowerCase() || "";
+    return permissions.filter((p) => {
+      const key = p.key?.toLowerCase() || "";
+      const label = p.label?.toLowerCase() || "";
 
-    return (
-      key.includes(search.toLowerCase()) ||
-      label.includes(search.toLowerCase())
-    );
-  });
-}, [permissions, search]);
+      return (
+        key.includes(search.toLowerCase()) ||
+        label.includes(search.toLowerCase())
+      );
+    });
+  }, [permissions, search]);
 
   const filteredCompanies = useMemo(() => {
     if (!companySearch) return companies;
@@ -293,9 +362,14 @@ useEffect(() => {
 
             <div style={{ marginTop: 20 }}>
               {sidebarGroups.map((group) => {
-               const groupPerms = filtered.filter(
-  (p) => p.key && group.permissions.includes(p.key)
-);
+                let groupPerms: Perm[] = [];
+
+                if (group.permissions) {
+                  groupPerms = filtered.filter(
+                    (p) => p.key && group.permissions!.includes(p.key)
+                  );
+                }
+                if (!group.permissions) return null;
                 if (groupPerms.length === 0) return null;
 
                 const isOpen = openGroup === group.title;
@@ -430,6 +504,43 @@ useEffect(() => {
         )}
       </div>
 
+      {/* ================= REHBER YETKILERI ================= */}
+
+<div style={{ ...card, marginTop: 24 }}>
+  <b>👨‍💼 Rehber Yetkiləri</b>
+
+  <div style={{ marginTop: 16 }}>
+    {guides.map((g) => {
+
+      const active = selectedGuides.includes(g.id);
+
+      return (
+        <div
+          key={g.id}
+          onClick={() => toggleGuide(g.id)}
+          style={{
+            ...itemBox,
+            background: active ? "#ede9fe" : "#ffffff",
+            border: active
+              ? "1px solid #7c3aed"
+              : "1px solid #e5e7eb",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={active}
+            readOnly
+          />
+
+          <div>
+            {g.ad} {g.soyad}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</div>
+
       <button
         onClick={save}
         disabled={loading}
@@ -509,3 +620,5 @@ const button: React.CSSProperties = {
   fontWeight: 900,
   cursor: "pointer",
 };
+
+//burdan sora basladim

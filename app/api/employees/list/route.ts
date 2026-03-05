@@ -48,7 +48,6 @@ async function getRequestUser(req: Request) {
   if (employeeError || !employee) {
     throw new Error("Employee not found");
   }
-console.log("EMPLOYEE DATA:", employee);
   return {
     id: employee.id,
     role: Array.isArray(employee.roles)

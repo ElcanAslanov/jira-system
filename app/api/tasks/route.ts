@@ -93,7 +93,7 @@ if (!user) {
 
     let tasks: any[] = [];
 
-    const baseSelect = `
+ const baseSelect = `
   id,
   title,
   description,
@@ -106,7 +106,12 @@ if (!user) {
   created_at,
   updated_at,
   created_by,
+  updated_by,
   creator:employees!tasks_created_by_fkey (
+    ad,
+    soyad
+  ),
+  updater:employees!tasks_updated_by_fkey (
     ad,
     soyad
   )
@@ -245,10 +250,7 @@ if (!user) {
     const unreadMap: Record<string, number> = {};
 
     comments?.forEach((c) => {
-      console.log("USER:", user.id);
-      console.log("COMMENT:", c.id);
-      console.log("AUTHOR:", c.author_id);
-      console.log("READS:", c.task_comment_reads);
+
 
       // 🔥 author_id artıq employee.id-dir
       if (c.author_id === user.id) return;
@@ -306,6 +308,14 @@ const finalTasks = tasks.map((task) => {
   const relatedAssignees =
     assignees?.filter((a) => a.task_id === task.id) ?? [];
 
+const updater = Array.isArray(task.updater)
+  ? task.updater[0]
+  : task.updater;
+
+const updatedByName = updater
+  ? `${updater.ad ?? ""} ${updater.soyad ?? ""}`.trim()
+  : null;
+
   const names: string[] = relatedAssignees
     .map((r) => {
       const emp = Array.isArray(r.employees)
@@ -334,6 +344,7 @@ const finalTasks = tasks.map((task) => {
   return {
     ...task,
     creator_name: creatorName,
+    updated_by_name: updatedByName,
     comment_count: commentCount,
     assigned_to: names,
     files: relatedFiles,
@@ -472,3 +483,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
+//burdan sora basladim
