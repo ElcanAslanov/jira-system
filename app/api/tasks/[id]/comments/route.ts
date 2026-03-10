@@ -1,30 +1,44 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+/* ================= FILE LIMITS ================= */
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+
+const ALLOWED_FILE_TYPES = [
+  "application/pdf",
+
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+];
+
 /* ================= AUTH ================= */
 
 async function getAuthUser(req: Request) {
-
   const auth =
     req.headers.get("authorization") ||
     req.headers.get("Authorization");
 
   const token = auth?.replace("Bearer ", "");
 
-  if (!token) {
-    return null;
-  }
+  if (!token) return null;
 
   const { data, error } = await supabase.auth.getUser(token);
 
-  if (error || !data?.user) {
-    return null;
-  }
+  if (error || !data?.user) return null;
 
   return data.user;
 }
@@ -76,7 +90,6 @@ export async function GET(
       return NextResponse.json({ comments: [] });
     }
 
-    // müəllif adlarını employees-dən alırıq (author_id = user_id)
     const authorUserIds = [
       ...new Set(comments.map((c) => c.author_id).filter(Boolean)),
     ];
@@ -103,7 +116,6 @@ export async function GET(
     });
 
     return NextResponse.json({ comments: formatted });
-
   } catch (e: any) {
     console.error("COMMENT LOAD ERROR:", e);
     return NextResponse.json(
@@ -150,15 +162,36 @@ export async function POST(
       );
     }
 
+    /* ================= FILE VALIDATION ================= */
+
+    if (hasFiles) {
+      for (const file of body.files) {
+
+        if (file.size > MAX_FILE_SIZE) {
+          return NextResponse.json(
+            { error: "File size cannot exceed 20MB" },
+            { status: 400 }
+          );
+        }
+
+        if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+          return NextResponse.json(
+            { error: "File type not allowed" },
+            { status: 400 }
+          );
+        }
+
+      }
+    }
+
     /* ===== INSERT COMMENT ===== */
-    // 🔥 author_id = auth user id
 
     const { data: insertedComment, error } = await supabaseAdmin
       .from("task_comments")
       .insert({
         task_id: taskId,
         author_id: authUser.id,
-        body: hasMessage ? body.comment.trim() : null,
+       body: hasMessage ? body.comment.trim() : "",
         files: hasFiles ? body.files : [],
       })
       .select()
@@ -166,7 +199,7 @@ export async function POST(
 
     if (error) throw error;
 
-    /* ===== AUTHOR AUTO-READ ===== */
+    /* ===== AUTHOR AUTO READ ===== */
 
     await supabaseAdmin
       .from("task_comment_reads")
@@ -182,7 +215,7 @@ export async function POST(
         }
       );
 
-    /* ================= NOTIFICATION LOGIC ================= */
+    /* ================= NOTIFICATIONS ================= */
 
     const { data: task } = await supabaseAdmin
       .from("tasks")
@@ -245,6 +278,7 @@ export async function POST(
 
   } catch (e: any) {
     console.error("COMMENT INSERT ERROR:", e);
+
     return NextResponse.json(
       { error: e?.message ?? "Server error" },
       { status: 500 }

@@ -65,31 +65,31 @@ if (!user) {
   );
 }
     // 🔥 RECURSIVE: bütün alt rehber və employee-ləri tapmaq üçün
-    async function getAllSubordinates(rootId: string): Promise<string[]> {
-      const visited = new Set<string>();
-      const stack = [rootId];
+    // async function getAllSubordinates(rootId: string): Promise<string[]> {
+    //   const visited = new Set<string>();
+    //   const stack = [rootId];
 
-      while (stack.length > 0) {
-        const current = stack.pop();
-        if (!current) continue;
+    //   while (stack.length > 0) {
+    //     const current = stack.pop();
+    //     if (!current) continue;
 
-        const { data } = await supabaseAdmin
-          .from("employee_guides")
-          .select("employee_id")
-          .eq("guide_id", current);
+    //     const { data } = await supabaseAdmin
+    //       .from("employee_guides")
+    //       .select("employee_id")
+    //       .eq("guide_id", current);
 
-        const children = data?.map((r) => r.employee_id) ?? [];
+    //     const children = data?.map((r) => r.employee_id) ?? [];
 
-        for (const child of children) {
-          if (!visited.has(child)) {
-            visited.add(child);
-            stack.push(child);
-          }
-        }
-      }
+    //     for (const child of children) {
+    //       if (!visited.has(child)) {
+    //         visited.add(child);
+    //         stack.push(child);
+    //       }
+    //     }
+    //   }
 
-      return Array.from(visited);
-    }
+    //   return Array.from(visited);
+    // }
 
     let tasks: any[] = [];
 
@@ -133,97 +133,49 @@ if (!user) {
 
     /* ================= REHBER ================= */
 
-    else if (user.role === "REHBER") {
+   /* ================= REHBER / EMPLOYEE ================= */
 
-      // 1️⃣ özünə assign olunan
-      const { data: selfAssigned } =
-        await supabaseAdmin
-          .from("task_assignees")
-          .select("task_id")
-          .eq("employee_id", user.id);
+else if (user.role === "REHBER" || user.role === "EMPLOYEE") {
 
-      const selfTaskIds =
-        selfAssigned?.map(r => r.task_id) ?? [];
+  // 1️⃣ mənə assign olunan tasklar
+  const { data: assignedRows } =
+    await supabaseAdmin
+      .from("task_assignees")
+      .select("task_id")
+      .eq("employee_id", user.id);
 
-      // 2️⃣ öz işçiləri
-      // 🔥 bütün alt rehber və employee-ləri tap
-      const employeeIds = await getAllSubordinates(user.id);
+  const assignedTaskIds =
+    assignedRows?.map((r) => r.task_id) ?? [];
 
-      // 3️⃣ işçilərə assign olunan tasklar
-      let employeeTaskIds: string[] = [];
+  // 2️⃣ mənim yaratdığım tasklar
+  const { data: createdRows } =
+    await supabaseAdmin
+      .from("tasks")
+      .select("id")
+      .eq("created_by", user.id);
 
-      if (employeeIds.length) {
-        const { data: employeeAssigned } =
-          await supabaseAdmin
-            .from("task_assignees")
-            .select("task_id")
-            .in("employee_id", employeeIds);
+  const createdTaskIds =
+    createdRows?.map((r) => r.id) ?? [];
 
-        employeeTaskIds =
-          employeeAssigned?.map(r => r.task_id) ?? [];
-      }
+  // 3️⃣ ikisini birləşdir
+  const allTaskIds = [...assignedTaskIds, ...createdTaskIds];
 
-      // 4️⃣ öz yaratdığı tasklar
-      const { data: createdTasks } =
-        await supabaseAdmin
-          .from("tasks")
-          .select("id")
-          .eq("created_by", user.id);
+  const uniqueTaskIds = [...new Set(allTaskIds)];
 
-      const createdTaskIds =
-        createdTasks?.map(r => r.id) ?? [];
+  if (!uniqueTaskIds.length) {
+    return NextResponse.json({ tasks: [] });
+  }
 
-      const allTaskIds = [
-        ...selfTaskIds,
-        ...employeeTaskIds,
-        ...createdTaskIds
-      ];
+  const { data, error } = await supabaseAdmin
+    .from("tasks")
+    .select(baseSelect)
+    .in("id", uniqueTaskIds)
+    .order("sort_index");
 
-      const uniqueTaskIds = [...new Set(allTaskIds)];
+  if (error) throw error;
 
-      if (!uniqueTaskIds.length) {
-        return NextResponse.json({ tasks: [] });
-      }
-
-      const { data, error } = await supabaseAdmin
-        .from("tasks")
-        .select(baseSelect)
-        .in("id", uniqueTaskIds)
-        .order("sort_index");
-
-      if (error) throw error;
-
-      tasks = data ?? [];
-    }
-
-
-    /* ================= EMPLOYEE ================= */
-
-    else if (user.role === "EMPLOYEE") {
-
-      const { data: assignedRows } =
-        await supabaseAdmin
-          .from("task_assignees")
-          .select("task_id")
-          .eq("employee_id", user.id);
-
-      const assignedTaskIds =
-        assignedRows?.map((r) => r.task_id) ?? [];
-
-      if (!assignedTaskIds.length) {
-        return NextResponse.json({ tasks: [] });
-      }
-
-      const { data, error } = await supabaseAdmin
-        .from("tasks")
-        .select(baseSelect)
-        .in("id", assignedTaskIds)
-        .order("sort_index");
-
-      if (error) throw error;
-
-      tasks = data ?? [];
-    }
+  tasks = data ?? [];
+}
 
     if (!tasks.length) {
       return NextResponse.json({ tasks: [] });
@@ -284,25 +236,27 @@ if (!user) {
 
 const filesMap: Record<string, any[]> = {};
 
-for (const taskId of taskIds) {
-  const { data: storageFiles } =
-    await supabaseAdmin.storage
+// 🔥 paralel işləyir (çox sürətli)
+const fileResults = await Promise.all(
+  taskIds.map(async (taskId) => {
+    const { data } = await supabaseAdmin.storage
       .from("task-files")
       .list(taskId, {
         limit: 100,
         offset: 0,
       });
 
-  if (storageFiles?.length) {
-    filesMap[taskId] = storageFiles.map((f) => ({
-      name: f.name.split("_").slice(1).join("_") || f.name,
-      path: `${taskId}/${f.name}`,
-      size: f.metadata?.size ?? 0,
-    }));
-  } else {
-    filesMap[taskId] = [];
-  }
-}
+    return { taskId, files: data ?? [] };
+  })
+);
+
+fileResults.forEach(({ taskId, files }) => {
+  filesMap[taskId] = files.map((f) => ({
+    name: f.name.split("_").slice(1).join("_") || f.name,
+    path: `${taskId}/${f.name}`,
+    size: f.metadata?.size ?? 0,
+  }));
+});
 
 const finalTasks = tasks.map((task) => {
   const relatedAssignees =

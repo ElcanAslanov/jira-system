@@ -621,4 +621,4 @@ const button: React.CSSProperties = {
   cursor: "pointer",
 };
 
-//burdan sora basladim
+//burdan sora

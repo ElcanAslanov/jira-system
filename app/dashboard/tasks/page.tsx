@@ -34,8 +34,7 @@ import Link from "@tiptap/extension-link"
 import { useSearchParams } from "next/navigation";
 import Calendar from "antd/es/calendar";
 import { createPortal } from "react-dom"
-
-
+import Placeholder from "@tiptap/extension-placeholder"
 
 
 
@@ -44,10 +43,11 @@ const { RangePicker } = DatePicker;
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"] as const;
 
 const STATUS_FLOW: Record<Status, Status[]> = {
-  TODO: ["IN_PROGRESS"],
-  IN_PROGRESS: ["DONE"],
+  TODO: ["IN_PROGRESS", "DONE", "CANCELLED"],
+  IN_PROGRESS: ["TODO", "DONE", "CANCELLED"],
   DONE: ["TODO"],
-  CANCELLED: []
+  CANCELLED: ["TODO", "IN_PROGRESS"]
+
 };
 type Status = (typeof STATUSES)[number];
 
@@ -210,6 +210,14 @@ function UserBadge({
   const ref = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
+  message.config({
+    top: 80,
+    duration: 3,
+    maxCount: 3,
+  });
+}, []);
+
+  useEffect(() => {
     if (!hovered || !ref.current) return;
 
     const rect = ref.current.getBoundingClientRect();
@@ -276,7 +284,17 @@ type UserInfo = {
   department?: string | null;
 };
 
+const BoardView = React.memo(function BoardView(props: any) {
+  return props.children;
+});
 
+const ListView = React.memo(function ListView(props: any) {
+  return props.children;
+});
+
+const CalendarLazy = React.memo(function CalendarLazy(props: any) {
+  return props.children;
+});
 
 export default function TasksPage() {
 
@@ -306,7 +324,7 @@ export default function TasksPage() {
       console.error("Download error:", err);
     }
   };
-
+  const [roleName, setRoleName] = useState<string | null>(null)
   const searchParams = useSearchParams();
   const openTaskId = searchParams.get("open");
   const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
@@ -317,15 +335,18 @@ export default function TasksPage() {
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-    ],
-    immediatelyRender: false,
-    onUpdate({ editor }) {
-      setNewComment(editor.getHTML())
-    },
-  })
+const editor = useEditor({
+  extensions: [
+    StarterKit,
+    Placeholder.configure({
+      placeholder: "Şərh yaz..."
+    })
+  ],
+  immediatelyRender: false,
+  onUpdate({ editor }) {
+    setNewComment(editor.getHTML());
+  },
+});
 
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -496,13 +517,25 @@ export default function TasksPage() {
     if (!user?.id) return;
 
     async function loadPermissions() {
-      // 🔹 Role permissions
+
+      // 🔹 ROLE NAME FETCH
+      const { data: roleData } = await supabase
+        .from("roles")
+        .select("name")
+        .eq("id", (user as any)?.role_id)
+        .single();
+
+      if (roleData?.name) {
+        setRoleName(roleData.name);
+      }
+
+      // 🔹 ROLE PERMISSIONS
       const { data: rolePerms } = await supabase
         .from("role_permissions")
         .select("permission_key")
         .eq("role_id", (user as any)?.role_id);
 
-      // 🔹 User override permissions
+      // 🔹 USER OVERRIDE PERMISSIONS
       const { data: userPerms } = await supabase
         .from("user_permissions")
         .select("permission_key, allowed")
@@ -511,12 +544,13 @@ export default function TasksPage() {
       let finalPerms =
         rolePerms?.map((p: any) => p.permission_key) || [];
 
-      // 🔹 Override logic (EXTRA / DENY)
+      // 🔹 OVERRIDE LOGIC
       if (userPerms) {
         userPerms.forEach((p: any) => {
           if (p.allowed === true && !finalPerms.includes(p.permission_key)) {
             finalPerms.push(p.permission_key);
           }
+
           if (p.allowed === false) {
             finalPerms = finalPerms.filter(
               (k) => k !== p.permission_key
@@ -627,7 +661,7 @@ export default function TasksPage() {
 
       const token = await getToken();
       if (!token) throw new Error("No auth token");
-    
+
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: {
@@ -649,6 +683,28 @@ export default function TasksPage() {
     },
     [getToken]
   );
+
+  const moveTask = useCallback((taskId: string, nextStatus: Status) => {
+    setTasksBy((prev) => {
+      const next: TasksByStatus = {
+        TODO: [...prev.TODO],
+        IN_PROGRESS: [...prev.IN_PROGRESS],
+        DONE: [...prev.DONE],
+        CANCELLED: [...prev.CANCELLED],
+      };
+
+      const found = findTask(prev, taskId);
+      if (!found) return prev;
+
+      const [task] = next[found.status].splice(found.index, 1);
+
+      const moved = { ...task, status: nextStatus };
+
+      next[nextStatus].push(moved);
+
+      return next;
+    });
+  }, []);
 
   const createTask = useCallback(
     async (payload: Partial<Task>) => {
@@ -697,7 +753,7 @@ export default function TasksPage() {
       loadTasks();
       loadUsers();
     }
-  }, [loading, user]);
+  }, [loading, user?.id]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -721,40 +777,45 @@ export default function TasksPage() {
       .subscribe();
 
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [user?.id]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel("comments-realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "task_comments" },
-        (payload) => {
-          const taskId = payload.new.task_id;
+  if (!user?.id) return;
 
-          setTasksBy((prev) => {
-            const next = { ...prev };
+  const channel = supabase
+    .channel("comments-realtime")
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "task_comments" },
+      (payload) => {
 
-            for (const st of STATUSES) {
-              next[st] = next[st].map((t) =>
-                t.id === taskId
-                  ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
-                  : t
-              );
-            }
+        const taskId = payload.new.task_id;
 
-            return next;
-          });
-        }
-      )
-      .subscribe();
+        setTasksBy(prev => {
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+          const next = { ...prev };
+
+          for (const st of STATUSES) {
+            next[st] = next[st].map(t =>
+              t.id === taskId
+                ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
+                : t
+            );
+          }
+
+          return next;
+        });
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel); // ✅ düzəldi
+  };
+
+}, [user?.id]);
 
   // LOAD COMMENTS WHEN VIEW DRAWER OPENS
   useEffect(() => {
@@ -828,88 +889,108 @@ export default function TasksPage() {
       name: string;
       path: string;
       size?: number;
+      type?: string;
     }[] = [];
 
-    try {
-      // 🔥 FILE UPLOAD
-      for (const file of commentFiles) {
-        const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
+   try {
 
+  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
-        const { error } = await supabase.storage
-          .from("task-comment-files")
-          .upload(fileName, file, {
-            cacheControl: "3600",
-            upsert: false,
-          });
+  // 🔥 FILE UPLOAD
+  for (const file of commentFiles) {
 
-        if (error) {
-          console.error("Upload error:", error);
-          continue;
-        }
-
-        uploaded.push({
-          name: file.name,
-          path: fileName,
-          size: file.size,
-        });
-      }
-
-
-      // 🔥 COMMENT INSERT
-      const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          comment: newComment.trim(),
-          files: uploaded,
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("COMMENT INSERT ERROR:", text);
-        return;
-      }
-
-      const data = await res.json();
-
-      // 🔥 UI UPDATE
-      setComments((prev) => [
-        {
-          ...data.comment,
-          files: Array.isArray(data.comment.files)
-            ? data.comment.files
-            : [],
-        },
-        ...prev,
-      ]);
-
-      // 🔥 COMMENT COUNT INCREMENT
-      setTasksBy((prev) => {
-        const next = { ...prev };
-
-        for (const st of STATUSES) {
-          next[st] = next[st].map((t) =>
-            t.id === viewTask.id
-              ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
-              : t
-          );
-        }
-
-        return next;
-      });
-      // 🔥 RESET
-      setNewComment("");
-      setCommentFiles([]);
-      editor?.commands.clearContent();
-
-    } catch (err) {
-      console.error("Add comment failed:", err);
+    // 🔴 SIZE CHECK (UPLOADDAN ƏVVƏL)
+    if (file.size > MAX_FILE_SIZE) {
+      message.error(`"${file.name}" faylı 20MB-dan böyükdür`);
+      return;
     }
+
+    const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
+
+    const { error } = await supabase.storage
+      .from("task-comment-files")
+      .upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("Upload error:", error);
+      message.error(`${file.name} yüklənmədi`);
+      continue;
+    }
+
+    uploaded.push({
+      name: file.name,
+      path: fileName,
+      size: file.size,
+      type: file.type,
+    });
+  }
+
+  // 🔥 COMMENT INSERT
+  const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      comment: newComment.trim(),
+      files: uploaded,
+    }),
+  });
+
+ if (!res.ok) {
+  const data = await res.json().catch(() => null);
+
+  const errorMessage =
+    data?.error || "Şərh göndərilə bilmədi";
+
+  message.error(errorMessage);
+
+  return;
+}
+
+  const data = await res.json();
+
+  // 🔥 UI UPDATE
+  setComments((prev) => [
+    {
+      ...data.comment,
+      files: Array.isArray(data.comment.files)
+        ? data.comment.files
+        : [],
+    },
+    ...prev,
+  ]);
+
+  // 🔥 COMMENT COUNT INCREMENT
+  setTasksBy((prev) => {
+    const next = { ...prev };
+
+    for (const st of STATUSES) {
+      next[st] = next[st].map((t) =>
+        t.id === viewTask.id
+          ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
+          : t
+      );
+    }
+
+    return next;
+  });
+
+  // 🔥 RESET
+  setNewComment("");
+  setCommentFiles([]);
+  editor?.commands.clearContent();
+
+  message.success("Şərh əlavə edildi");
+
+} catch (err) {
+  console.error("Add comment failed:", err);
+  message.error("Xəta baş verdi");
+}
   };
 
   // Create modal
@@ -961,11 +1042,10 @@ export default function TasksPage() {
         : (overFoundTask?.status ?? activeFound.status);
 
       // 🔒 EMPLOYEE CANCELLED column-a ata bilməz
-      if (
-        targetStatus === "CANCELLED" &&
-        (user as any)?.role === "EMPLOYEE"
-      ) {
-        return;
+      const role = (roleName || "").toUpperCase()
+
+      if (targetStatus === "CANCELLED" && role === "EMPLOYEE") {
+        return
       }
 
       // 🔒 Status transition rule
@@ -1033,9 +1113,11 @@ export default function TasksPage() {
 
   const isCreator = viewTask?.created_by === user.id
   const isAssigned = viewTask?.assigned_to?.includes(user.id)
-  const isRehber = (user as any)?.role === "REHBER"
-  const isAdmin = (user as any)?.role === "admin"
-  const isEmployee = (user as any)?.role === "EMPLOYEE"
+  const role = ((user as any)?.role || "").toUpperCase()
+
+  const isRehber = role === "REHBER"
+  const isAdmin = role === "ADMIN"
+  const isEmployee = role === "EMPLOYEE"
 
   const canReopen =
     isRehber ||
@@ -1151,10 +1233,11 @@ export default function TasksPage() {
                   tasks={col.tasks}
                   can={can}
                   currentUserId={user.id}
-                  userRole={(user as any)?.role}   // 👈 bunu əlavə et
+                  userRole={roleName ?? ""}
                   users={users}   // BUNU ƏLAVƏ ET
                   updateTask={updateTask}
                   loadTasks={loadTasks}
+                  moveTask={moveTask}
                   onSelect={(task) => {
                     setViewTask(task);
                     setDrawerOpen(true);
@@ -1956,23 +2039,7 @@ export default function TasksPage() {
                   </button>
                 )}
 
-                {viewTask.status === "DONE" && isCreator && !isAssigned && (
-                  <button
-                    onClick={async () => {
-                      await updateTask(viewTask.id, { status: "TODO" })
-                      await loadTasks()
-
-                      setViewTask((prev: any) =>
-                        prev ? { ...prev, status: "TODO" } : prev
-                      )
-                    }}
-                    className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-300"
-                  >
-                    Reopen Task
-                  </button>
-                )}
-
-                {viewTask.status === "CANCELLED" && (isRehber || isAdmin) && (
+                {viewTask.status === "CANCELLED" && isCreator && (
                   <button
                     onClick={async () => {
                       await updateTask(viewTask.id, { status: "TODO" })
@@ -2216,82 +2283,170 @@ export default function TasksPage() {
 
                   {/* ADD COMMENT */}
                   {/* ADD COMMENT */}
-                  <div className="mt-4 border rounded-xl p-3 bg-white">
+                 <div className="mt-5 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
-                    {/* TOOLBAR */}
-                    <div className="flex gap-2 mb-2">
-                      <button
-                        onClick={() => editor?.chain().focus().toggleBold().run()}
-                        className="px-2 py-1 border rounded text-sm"
-                      >
-                        B
-                      </button>
+  {/* TOOLBAR */}
+  <div className="flex items-center gap-2 px-3 py-2 border-b bg-gray-50">
 
-                      <button
-                        onClick={() => editor?.chain().focus().toggleItalic().run()}
-                        className="px-2 py-1 border rounded text-sm"
-                      >
-                        I
-                      </button>
+    <button
+      onClick={() => editor?.chain().focus().toggleBold().run()}
+      className="
+        px-2.5 py-1
+        text-sm
+        rounded-md
+        hover:bg-gray-200
+        transition
+        font-bold
+      "
+    >
+      B
+    </button>
 
-                      <label className="px-2 py-1 border rounded text-sm cursor-pointer">
-                        📎 Fayl
-                        <input
-                          type="file"
-                          hidden
-                          multiple
-                          onChange={(e) =>
-                            setCommentFiles(Array.from(e.target.files || []))
-                          }
-                        />
-                      </label>
-                    </div>
+    <button
+      onClick={() => editor?.chain().focus().toggleItalic().run()}
+      className="
+        px-2.5 py-1
+        text-sm
+        rounded-md
+        hover:bg-gray-200
+        transition
+        italic
+      "
+    >
+      I
+    </button>
 
-                    {/* EDITOR */}
-                    <div className="border rounded-lg p-2 min-h-[100px]">
-                      {editor && <EditorContent editor={editor} />}
-                    </div>
+    <div className="flex-1" />
 
-                    {/* SELECTED FILES PREVIEW */}
-                    {commentFiles.length > 0 && (
-                      <div className="mt-3 space-y-1">
-                        {commentFiles.map((file, i) => (
-                          <div
-                            key={i}
-                            className="flex justify-between items-center bg-gray-50 px-3 py-2 rounded-lg text-sm"
-                          >
-                            <span>📎 {file.name}</span>
-                            <button
-                              onClick={() =>
-                                setCommentFiles((prev) =>
-                                  prev.filter((_, index) => index !== i)
-                                )
-                              }
-                              className="text-red-500"
-                            >
-                              ✖
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+    <label className="
+      flex items-center gap-1
+      px-3 py-1
+      text-sm
+      rounded-md
+      hover:bg-gray-200
+      cursor-pointer
+      transition
+    ">
+      📎 Fayl
+      <input
+  type="file"
+  hidden
+  multiple
+  onChange={(e) => {
 
-                    {/* SUBMIT BUTTON */}
-                    <button
-                      onClick={async () => {
-                        if (!newComment.trim() && commentFiles.length === 0) return;
+    const files = Array.from(e.target.files || []);
+    const MAX = 20 * 1024 * 1024;
 
-                        await handleAddComment();
+    const valid: File[] = [];
 
+    for (const file of files) {
 
-                        // 🔥 editor temizle
-                        editor?.commands.clearContent();
-                      }}
-                      className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-                    >
-                      Göndər
-                    </button>
-                  </div>
+      if (file.size > MAX) {
+        message.error(`"${file.name}" 20MB-dan böyükdür`);
+        continue;
+      }
+
+      valid.push(file);
+    }
+
+    setCommentFiles(valid);
+
+  }}
+/>
+    </label>
+  </div>
+
+  {/* EDITOR */}
+  <div
+    className="
+      px-4 py-3
+      min-h-[120px]
+      max-h-[260px]
+      overflow-y-auto
+      focus-within:ring-2
+      focus-within:ring-indigo-500
+      transition      
+    "
+  >
+    {editor && <EditorContent editor={editor} />}
+  </div>
+
+  {/* FILE PREVIEW */}
+  {commentFiles.length > 0 && (
+    <div className="px-4 pb-3 space-y-2 border-t bg-gray-50">
+
+      {commentFiles.map((file, i) => (
+        <div
+          key={i}
+          className="
+            flex
+            items-center
+            justify-between
+            bg-white
+            border
+            rounded-lg
+            px-3
+            py-2
+            text-sm
+            shadow-sm
+          "
+        >
+          <div className="flex items-center gap-2">
+            <span>📎</span>
+            <span className="font-medium text-gray-700">
+              {file.name}
+            </span>
+          </div>
+
+          <button
+            onClick={() =>
+              setCommentFiles((prev) =>
+                prev.filter((_, index) => index !== i)
+              )
+            }
+            className="
+              text-red-500
+              hover:text-red-700
+              font-semibold
+            "
+          >
+            ✖
+          </button>
+        </div>
+      ))}
+
+    </div>
+  )}
+
+  {/* SUBMIT */}
+  <div className="px-4 pb-4 pt-2 flex justify-end border-t bg-white">
+
+    <button
+      onClick={async () => {
+        if (!newComment.trim() && commentFiles.length === 0) return;
+
+        await handleAddComment();
+
+        editor?.commands.clearContent();
+      }}
+      className="
+        bg-indigo-600
+        hover:bg-indigo-700
+        text-white
+        px-5
+        py-2
+        rounded-lg
+        font-medium
+        shadow-sm
+        transition
+      "
+    >
+      Göndər
+    </button>
+
+  </div>
+
+</div>
                 </div>
               )}
             </div>
@@ -2477,7 +2632,7 @@ function DrawerRow({ label, value }: { label: string; value: any }) {
 
 /* COLUMN */
 /* COLUMN */
-const Column = React.memo(function Column({
+function Column({
   id,
   title,
   tasks,
@@ -2487,6 +2642,7 @@ const Column = React.memo(function Column({
   userRole,
   updateTask,
   loadTasks,
+  moveTask,
   users
 }: {
   id: Status;
@@ -2498,6 +2654,7 @@ const Column = React.memo(function Column({
   userRole: string;
   updateTask: (id: string, updates: any) => Promise<void>;
   loadTasks: () => void;
+  moveTask: (taskId: string, nextStatus: Status) => void;
   users: UserInfo[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -2560,7 +2717,8 @@ const Column = React.memo(function Column({
               currentUserId={currentUserId}
               userRole={userRole}
               updateTask={updateTask}
-              loadTasks={loadTasks}
+              // loadTasks={loadTasks}
+              moveTask={moveTask}   // 👈 əlavə et
               users={users}
             />
           ))}
@@ -2568,7 +2726,7 @@ const Column = React.memo(function Column({
       </SortableContext>
     </div>
   );
-});
+};
 
 function getTaskProgress(task: Task) {
   if (!task.start_date || !task.due_date) return 0;
@@ -2595,7 +2753,7 @@ const TaskCard = React.memo(function TaskCard({
   currentUserId,
   userRole,
   updateTask,
-  loadTasks,
+  moveTask,
   users
 }: {
   task: Task;
@@ -2605,11 +2763,15 @@ const TaskCard = React.memo(function TaskCard({
   userRole: string;
   users: UserInfo[];
   updateTask: (id: string, updates: any) => Promise<void>;
-  loadTasks: () => void;
+  moveTask: (taskId: string, nextStatus: Status) => void;
 }) {
-  const isDone = task.status === "DONE" || task.status === "CANCELLED";
+  const isDone =
+    (task.status === "DONE" || task.status === "CANCELLED") &&
+    userRole === "EMPLOYEE";
   const progress = getTaskProgress(task);
 
+
+  const isCreator = task.created_by === currentUserId
 
   /* DUE STATUS */
   const now = new Date();
@@ -2649,15 +2811,22 @@ const TaskCard = React.memo(function TaskCard({
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: isDone || !can("tasks.edit.list"),
+    disabled: (!can("tasks.edit.list")) || isDone,
   });
 
   const isAssignedUser =
     task.assigned_to?.includes(currentUserId);
 
-  const isCreator = task.created_by === currentUserId
+  const role = (userRole || "").toUpperCase()
+
+  const isAdmin = role === "ADMIN"
+  const isRehber = role === "REHBER"
+  const isEmployee = role === "EMPLOYEE"
+
+
   const isAssigned = task.assigned_to?.includes(currentUserId)
-  const isRehber = false // bunu parentdən göndərmək daha yaxşıdır
+
+
   const isCancelledLocked =
     task.status === "CANCELLED" &&
     userRole === "EMPLOYEE" &&
@@ -2689,9 +2858,9 @@ const TaskCard = React.memo(function TaskCard({
         }
     `}
       onClick={(e) => {
-  e.stopPropagation();
-  onSelect(task);
-}}
+        e.stopPropagation();
+        onSelect(task);
+      }}
     >
 
       {task.creator_name && (
@@ -2703,8 +2872,8 @@ const TaskCard = React.memo(function TaskCard({
       <div className="font-semibold text-gray-900 flex items-center gap-2">
         {task.title}
 
-        {userRole === "EMPLOYEE" &&
-          (task.status === "DONE" || task.status === "CANCELLED") && (
+        {(task.status === "DONE" || task.status === "CANCELLED") &&
+          userRole === "EMPLOYEE" && (
             <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-700">
               🔒
             </span>
@@ -2737,11 +2906,22 @@ const TaskCard = React.memo(function TaskCard({
             onClick={async (e) => {
               e.stopPropagation();
 
-              const nextStatus = STATUS_FLOW[task.status as Status]?.[0];
+              let nextStatus: Status | null = null
+
+              if (task.status === "TODO") {
+                nextStatus = "IN_PROGRESS"
+              }
+
+              if (task.status === "IN_PROGRESS") {
+                nextStatus = "DONE"
+              }
+
+              if (!nextStatus) return
               if (!nextStatus) return;
 
+              moveTask(task.id, nextStatus);   // 🔥 instant UI move
               await updateTask(task.id, { status: nextStatus });
-              loadTasks();
+              // loadTasks();
             }}
             className="mt-3 w-full bg-indigo-600 text-white py-1.5 rounded-lg text-xs hover:bg-indigo-700"
           >
@@ -2749,13 +2929,13 @@ const TaskCard = React.memo(function TaskCard({
             {task.status === "IN_PROGRESS" && "Complete Task"}
           </button>
         )}
-
-        {task.status === "DONE" && isCreator && !isAssigned && (
+        {task.status === "DONE" && isCreator && (
           <button
             onClick={async (e) => {
               e.stopPropagation()
+
+              moveTask(task.id, "TODO")
               await updateTask(task.id, { status: "TODO" })
-              loadTasks()
             }}
             className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
           >
@@ -2763,20 +2943,22 @@ const TaskCard = React.memo(function TaskCard({
           </button>
         )}
 
-        {task.status === "CANCELLED" && isRehber && (
+        {task.status === "CANCELLED" && isCreator && (
           <button
             onClick={async (e) => {
               e.stopPropagation()
 
+              moveTask(task.id, "TODO")
               await updateTask(task.id, { status: "TODO" })
-              loadTasks()
             }}
             className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
           >
-            Restore Task
+            Reopen Task
           </button>
         )}
+
       </div>
+
 
       {/* PROGRESS LABEL */}
       {!isDone && task.start_date && task.due_date && (
@@ -2791,7 +2973,7 @@ const TaskCard = React.memo(function TaskCard({
   );
 });
 
-
+//bura kimi
 
 /* EDIT DRAWER */
 type EditDrawerProps = {
@@ -3268,3 +3450,4 @@ function CreateTaskModal({
   );
 }
 
+//bura kimi geldik
