@@ -1,0 +1,16 @@
+name: Recurring Tasks Cron
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call cron API
+        run: |
+          curl -X GET "${{ secrets.CRON_URL }}" \
+          -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

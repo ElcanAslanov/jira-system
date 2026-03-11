@@ -261,11 +261,10 @@ export default function NewRecurringPage() {
                                     key={day.value}
                                     type="button"
                                     onClick={() => toggleWeekDay(day.value)}
-                                    className={`px-4 py-2 rounded-full text-sm ${
-                                        weekDays.includes(day.value)
+                                    className={`px-4 py-2 rounded-full text-sm ${weekDays.includes(day.value)
                                             ? "bg-indigo-600 text-white"
                                             : "bg-gray-100"
-                                    }`}
+                                        }`}
                                 >
                                     {day.label}
                                 </button>
@@ -337,49 +336,49 @@ export default function NewRecurringPage() {
                 />
 
                 {/* ASSIGN USERS */}
-<div ref={dropdownRef}>
-    <label className="text-sm font-medium text-gray-600">
-        İcraçılar
-    </label>
+                <div ref={dropdownRef}>
+                    <label className="text-sm font-medium text-gray-600">
+                        İcraçılar
+                    </label>
 
-    <div
-        onClick={() => setAssignOpen(!assignOpen)}
-        className="w-full mt-2 border p-3 rounded-xl bg-white cursor-pointer flex justify-between items-center"
-    >
-        <span className="text-sm text-gray-700">
-            {assignedTo.length === 0
-                ? "İcraçı seç"
-                : `${assignedTo.length} nəfər seçilib`}
-        </span>
-        <span className="text-gray-400 text-xs">
-            ▼
-        </span>
-    </div>
+                    <div
+                        onClick={() => setAssignOpen(!assignOpen)}
+                        className="w-full mt-2 border p-3 rounded-xl bg-white cursor-pointer flex justify-between items-center"
+                    >
+                        <span className="text-sm text-gray-700">
+                            {assignedTo.length === 0
+                                ? "İcraçı seç"
+                                : `${assignedTo.length} nəfər seçilib`}
+                        </span>
+                        <span className="text-gray-400 text-xs">
+                            ▼
+                        </span>
+                    </div>
 
-    {assignOpen && (
-        <div className="mt-2 border rounded-xl bg-white shadow-md max-h-60 overflow-y-auto">
-            {employees.map((emp) => (
-                <label
-                    key={emp.id}
-                    className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer text-sm"
-                >
-                    <input
-                        type="checkbox"
-                        checked={assignedTo.includes(emp.id)}
-                        onChange={() => toggleAssign(emp.id)}
-                    />
-                    {emp.ad} {emp.soyad}
-                </label>
-            ))}
+                    {assignOpen && (
+                        <div className="mt-2 border rounded-xl bg-white shadow-md max-h-60 overflow-y-auto">
+                            {employees.map((emp) => (
+                                <label
+                                    key={emp.id}
+                                    className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer text-sm"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={assignedTo.includes(emp.id)}
+                                        onChange={() => toggleAssign(emp.id)}
+                                    />
+                                    {emp.ad} {emp.soyad}
+                                </label>
+                            ))}
 
-            {employees.length === 0 && (
-                <div className="p-3 text-sm text-gray-400">
-                    İşçi tapılmadı
+                            {employees.length === 0 && (
+                                <div className="p-3 text-sm text-gray-400">
+                                    İşçi tapılmadı
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
-            )}
-        </div>
-    )}
-</div>
 
                 {/* FILE UPLOAD */}
                 <div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 type Option = {
   id: string;
@@ -9,6 +11,9 @@ type Option = {
 };
 
 export default function NewEmployeePage() {
+
+  const { lang } = useLang();
+  const t = translations[lang];
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -43,28 +48,28 @@ export default function NewEmployeePage() {
   );
 
   const [hasGuide, setHasGuide] = useState(false);
-const [selectedGuides, setSelectedGuides] = useState<Option[]>([]);
-const [guideSearch, setGuideSearch] = useState("");
-const [guideOpen, setGuideOpen] = useState(false);
+  const [selectedGuides, setSelectedGuides] = useState<Option[]>([]);
+  const [guideSearch, setGuideSearch] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
 
-useEffect(() => {
-  function handleClickOutside(event: MouseEvent) {
-    if (
-      guideRef.current &&
-      !guideRef.current.contains(event.target as Node)
-    ) {
-      setGuideOpen(false);
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        guideRef.current &&
+        !guideRef.current.contains(event.target as Node)
+      ) {
+        setGuideOpen(false);
+      }
     }
-  }
 
-  if (guideOpen) {
-    document.addEventListener("mousedown", handleClickOutside);
-  }
+    if (guideOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
 
-  return () => {
-    document.removeEventListener("mousedown", handleClickOutside);
-  };
-}, [guideOpen]);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [guideOpen]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -78,10 +83,10 @@ useEffect(() => {
     const formData = new FormData(form);
 
     if (hasGuide && selectedGuides.length > 0) {
-  selectedGuides.forEach((g) => {
-    formData.append("guide_ids", g.id);
-  });
-}
+      selectedGuides.forEach((g) => {
+        formData.append("guide_ids", g.id);
+      });
+    }
 
     try {
       const res = await fetch("/api/employees/create", {
@@ -92,9 +97,9 @@ useEffect(() => {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error || "Server xətası");
+        setError(data?.error || t.serverError);
       } else {
-        setSuccess("İşçi uğurla əlavə edildi");
+        setSuccess(t.employeeCreated);
         form.reset();
         setSelectedCompany("");
       }
@@ -115,16 +120,16 @@ useEffect(() => {
       }}
     >
       <h1 style={{ fontSize: 26, fontWeight: 900 }}>
-        ➕ Yeni İşçi Əlavə Et
+        ➕ {t.addEmployee}
       </h1>
 
       <p style={{ marginTop: 4, color: "#6b7280", fontSize: 14 }}>
-        İşçi məlumatlarını daxil edin və sistemi tamamlayın.
+        {t.addEmployeeDesc}
       </p>
 
       <div style={{ marginTop: 18, ...card }}>
         <div style={cardHeader}>
-          <b>İşçi məlumatları</b>
+          <b>{t.employeeInfo}</b>
         </div>
 
         <div style={{ padding: 18 }}>
@@ -142,11 +147,11 @@ useEffect(() => {
 
           <form onSubmit={handleSubmit}>
             <div style={grid}>
-              <Field label="Email">
+              <Field label={t.email}>
                 <input name="email" required style={input} />
               </Field>
 
-              <Field label="Şifrə">
+              <Field label={t.password}>
                 <input
                   name="password"
                   type="password"
@@ -155,30 +160,30 @@ useEffect(() => {
                 />
               </Field>
 
-              <Field label="Ad">
+              <Field label={t.name}>
                 <input name="ad" required style={input} />
               </Field>
 
-              <Field label="Soyad">
+              <Field label={t.surname}>
                 <input name="soyad" required style={input} />
               </Field>
 
-              <Field label="Ata adı">
+              <Field label={t.fatherName}>
                 <input name="ata_adi" style={input} />
               </Field>
 
-              <Field label="Əlaqə nömrəsi">
+              <Field label={t.phone}>
                 <input name="elaqe_nomresi" style={input} />
               </Field>
 
-              <Field label="Şirkət">
+              <Field label={t.company}>
                 <select
                   name="company_id"
                   value={selectedCompany}
                   onChange={(e) => setSelectedCompany(e.target.value)}
                   style={input}
                 >
-                  <option value="">Şirkət seç</option>
+                  <option value="">{t.selectCompany}</option>
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -187,7 +192,7 @@ useEffect(() => {
                 </select>
               </Field>
 
-              <Field label="Departament">
+              <Field label={t.department}>
                 <select
                   name="department_id"
                   disabled={!selectedCompany}
@@ -198,8 +203,8 @@ useEffect(() => {
                 >
                   <option value="">
                     {selectedCompany
-                      ? "Departament seçin"
-                      : "Əvvəlcə şirkət seçin"}
+                      ? t.selectDepartment
+                      : t.selectCompanyFirst}
                   </option>
                   {filteredDepartments.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -209,9 +214,9 @@ useEffect(() => {
                 </select>
               </Field>
 
-              <Field label="Vəzifə">
+              <Field label={t.position}>
                 <select name="position_id" style={input}>
-                  <option value="">Vəzifə seç</option>
+                  <option value="">{t.selectPosition}</option>
                   {positions.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -220,9 +225,9 @@ useEffect(() => {
                 </select>
               </Field>
 
-              <Field label="Rol">
+              <Field label={t.role}>
                 <select name="role_id" style={input}>
-                  <option value="">Rol seç</option>
+                  <option value="">{t.selectRole}</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
@@ -231,138 +236,138 @@ useEffect(() => {
                 </select>
               </Field>
 
-             <Field label="Rəhbər əlavə et">
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <input
-      type="checkbox"
-      checked={hasGuide}
-      onChange={(e) => {
-        setHasGuide(e.target.checked);
-        if (!e.target.checked) {
-          setSelectedGuides([]);
-          setGuideOpen(false);
-        }
-      }}
-    />
-    <span style={{ fontSize: 14, fontWeight: 700 }}>
-      Rəhbər seçmək istəyirəm
-    </span>
-  </div>
-</Field>
-
-{hasGuide && (
- <div
-  ref={guideRef}
-  style={{
-    gridColumn: "1 / -1",
-    position: "relative",
-    overflow: "visible",
-  }}
->
-    <Field label="Rehber seç">
-      {/* Selected chips */}
-      {selectedGuides.length > 0 && (
-        <div style={chipWrap}>
-          {selectedGuides.map((g) => (
-            <div key={g.id} style={chip}>
-              <span>{g.name}</span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedGuides(
-                    selectedGuides.filter((x) => x.id !== g.id)
-                  )
-                }
-                style={chipBtn}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Dropdown trigger */}
-      <div
-        onClick={() => setGuideOpen((p) => !p)}
-        style={{
-          ...input,
-          cursor: "pointer",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontWeight: 800,
-          border: guideOpen ? "2px solid #2563eb" : "1px solid #d1d5db",
-          background: guideOpen ? "#eff6ff" : "#fff",
-        }}
-      >
-        <span>
-          {selectedGuides.length
-            ? `${selectedGuides.length} rehber seçildi`
-            : "Rehber seç"}
-        </span>
-        <span style={{ color: "#2563eb", fontWeight: 900 }}>
-          {guideOpen ? "▲" : "▼"}
-        </span>
-      </div>
-
-      {guideOpen && (
-        <div style={dropdownBox}>
-          <div style={searchWrap}>
-            <input
-              value={guideSearch}
-              onChange={(e) => setGuideSearch(e.target.value)}
-              placeholder="Axtar..."
-              style={searchInput}
-              autoFocus
-            />
-          </div>
-
-          <div style={listWrap}>
-            {guides
-              .filter((g) =>
-                g.name.toLowerCase().includes(guideSearch.toLowerCase())
-              )
-              .map((g) => {
-                const selected = selectedGuides.some(
-                  (x) => x.id === g.id
-                );
-
-                return (
-                  <div
-                    key={g.id}
-                    onClick={() => {
-                      if (selected) {
-                        setSelectedGuides(
-                          selectedGuides.filter((x) => x.id !== g.id)
-                        );
-                      } else {
-                        setSelectedGuides([...selectedGuides, g]);
+              <Field label={t.addGuide}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={hasGuide}
+                    onChange={(e) => {
+                      setHasGuide(e.target.checked);
+                      if (!e.target.checked) {
+                        setSelectedGuides([]);
+                        setGuideOpen(false);
                       }
                     }}
-                    style={{
-                      ...listItem,
-                      background: selected ? "#eff6ff" : "#fff",
-                      borderLeft: selected
-                        ? "4px solid #2563eb"
-                        : "4px solid transparent",
-                    }}
-                  >
-                    <div style={checkboxUI}>
-                      {selected ? "✓" : ""}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>
+                    {t.wantGuide}
+                  </span>
+                </div>
+              </Field>
+
+              {hasGuide && (
+                <div
+                  ref={guideRef}
+                  style={{
+                    gridColumn: "1 / -1",
+                    position: "relative",
+                    overflow: "visible",
+                  }}
+                >
+                  <Field label={t.selectGuide}>
+                    {/* Selected chips */}
+                    {selectedGuides.length > 0 && (
+                      <div style={chipWrap}>
+                        {selectedGuides.map((g) => (
+                          <div key={g.id} style={chip}>
+                            <span>{g.name}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedGuides(
+                                  selectedGuides.filter((x) => x.id !== g.id)
+                                )
+                              }
+                              style={chipBtn}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Dropdown trigger */}
+                    <div
+                      onClick={() => setGuideOpen((p) => !p)}
+                      style={{
+                        ...input,
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontWeight: 800,
+                        border: guideOpen ? "2px solid #2563eb" : "1px solid #d1d5db",
+                        background: guideOpen ? "#eff6ff" : "#fff",
+                      }}
+                    >
+                      <span>
+                        {selectedGuides.length
+                          ? `${selectedGuides.length} ${t.guidesSelected}`
+                          : t.selectGuide}
+                      </span>
+                      <span style={{ color: "#2563eb", fontWeight: 900 }}>
+                        {guideOpen ? "▲" : "▼"}
+                      </span>
                     </div>
-                    <div style={{ fontWeight: 800 }}>
-                      {g.name}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
-    </Field>
-  </div>
-)}
+
+                    {guideOpen && (
+                      <div style={dropdownBox}>
+                        <div style={searchWrap}>
+                          <input
+                            value={guideSearch}
+                            onChange={(e) => setGuideSearch(e.target.value)}
+                            placeholder={t.search}
+                            style={searchInput}
+                            autoFocus
+                          />
+                        </div>
+
+                        <div style={listWrap}>
+                          {guides
+                            .filter((g) =>
+                              g.name.toLowerCase().includes(guideSearch.toLowerCase())
+                            )
+                            .map((g) => {
+                              const selected = selectedGuides.some(
+                                (x) => x.id === g.id
+                              );
+
+                              return (
+                                <div
+                                  key={g.id}
+                                  onClick={() => {
+                                    if (selected) {
+                                      setSelectedGuides(
+                                        selectedGuides.filter((x) => x.id !== g.id)
+                                      );
+                                    } else {
+                                      setSelectedGuides([...selectedGuides, g]);
+                                    }
+                                  }}
+                                  style={{
+                                    ...listItem,
+                                    background: selected ? "#eff6ff" : "#fff",
+                                    borderLeft: selected
+                                      ? "4px solid #2563eb"
+                                      : "4px solid transparent",
+                                  }}
+                                >
+                                  <div style={checkboxUI}>
+                                    {selected ? "✓" : ""}
+                                  </div>
+                                  <div style={{ fontWeight: 800 }}>
+                                    {g.name}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </Field>
+                </div>
+              )}
             </div>
 
             <button
@@ -381,7 +386,7 @@ useEffect(() => {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? "Yüklənir..." : "Əlavə Et"}
+              {loading ? t.loading : t.add}
             </button>
           </form>
         </div>

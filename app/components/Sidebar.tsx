@@ -6,6 +6,8 @@ import { useState, useEffect, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useUser } from "@/hooks/useUser";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 type SubLink = {
   href: string;
@@ -20,6 +22,11 @@ type Group = {
 };
 
 export default function Sidebar() {
+
+
+  const { lang, setLang } = useLang();
+  const t = translations[lang];
+  const [langOpen, setLangOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useUser();
@@ -36,104 +43,104 @@ export default function Sidebar() {
      FULL MENU STRUCTURE
   ==============================*/
 
-  const groups: Group[] = [
+ const groups: Group[] = useMemo(() => [
     {
-      title: "Dashboard",
+      title: t.dashboard,
       key: "dashboard",
       links: [
         {
           href: "/dashboard",
-          label: "Ana səhifə",
+          label: t.home,
           permission: "dashboard.view",
         },
       ],
     },
     {
-      title: "İşçilər",
+      title: t.employees,
       key: "employees",
       links: [
         {
           href: "/dashboard/employees",
-          label: "İşçilər",
+          label: t.employees,
           permission: "employees.view",
         },
         {
           href: "/dashboard/employees/new",
-          label: "Yeni İşçi",
+          label: t.newEmployee,
           permission: "employees.create",
         },
       ],
     },
     {
-      title: "Struktur",
+      title: t.structure,
       key: "structure",
       links: [
         {
           href: "/dashboard/companies",
-          label: "Şirkətlər",
+          label: t.companies,
           permission: "companies.view",
         },
         {
           href: "/dashboard/departments",
-          label: "Departamentlər",
+          label: t.departments,
           permission: "departments.view",
         },
         {
           href: "/dashboard/positions",
-          label: "Vəzifələr",
+          label: t.positions,
           permission: "positions.view",
         },
         {
           href: "/dashboard/roles",
-          label: "Rollar",
+          label: t.roles,
           permission: "roles.view",
         },
       ],
     },
     {
-      title: "Tapşırıqlar",
+      title: t.tasks,
       key: "tasks",
       links: [
         {
           href: "/dashboard/tasks",
-          label: "Tapşırıqlar",
+          label: t.tasks,
           permission: "tasks.view",
         },
         {
           href: "/dashboard/tasks/new",
-          label: "Yeni Tapşırıq",
+          label: t.newTask,
           permission: "tasks.create",
         },
       ],
     },
     {
-      title: "Dövrlü Tapşırıqlar",
+      title: t.recurringTasks,
       key: "recurring",
       links: [
         {
           href: "/dashboard/recurring",
-          label: "Dövrlü Tasklar",
+          label: t.recurringTasks,
           permission: "recurring.view",
         },
         {
           href: "/dashboard/recurring/new",
-          label: "Yeni Dövrlü Task",
+          label: t.newRecurringTask,
           permission: "recurring.create",
         },
       ],
     },
     {
-      title: "Yetkilər",
+      title: t.permissions,
       key: "permissions",
       links: [
         {
           href: "/dashboard/role-permissions",
-          label: "Yetki İdarəsi",
+          label: t.permissionManagement,
           permission: "role_permissions.view",
         },
       ],
     },
-  ];
+  ] , [t]);
 
   /* =============================
      LOAD PERMISSIONS + EMPLOYEE
@@ -233,7 +240,7 @@ export default function Sidebar() {
         return { ...group, links: filteredLinks };
       })
       .filter(Boolean) as Group[];
-  }, [permissions]);
+  }, [permissions, groups]);
 
   /* =============================
      AUTO OPEN ACTIVE GROUP
@@ -298,8 +305,8 @@ export default function Sidebar() {
               <ChevronDown
                 size={16}
                 className={`transition-transform ${openGroup === group.key
-                    ? "rotate-180"
-                    : ""
+                  ? "rotate-180"
+                  : ""
                   }`}
               />
             </button>
@@ -315,8 +322,8 @@ export default function Sidebar() {
                       key={link.href}
                       href={link.href}
                       className={`block px-4 py-2 rounded-lg text-sm transition ${isActive
-                          ? "bg-[#e42526]/20 text-white"
-                          : "text-gray-400 hover:bg-white/5 hover:text-white"
+                        ? "bg-[#e42526]/20 text-white"
+                        : "text-gray-400 hover:bg-white/5 hover:text-white"
                         }`}
                     >
                       {link.label}
@@ -330,23 +337,87 @@ export default function Sidebar() {
       </div>
 
       <div className="px-6 py-4 border-t border-white/10 space-y-3">
+
         {permissions.includes("settings.view") && (
           <Link
             href="/dashboard/settings"
             className={`block w-full text-center py-2.5 rounded-xl text-sm transition ${pathname === "/dashboard/settings"
-                ? "bg-[#e42526]/20 text-white"
-                : "bg-white/5 hover:bg-white/10 text-gray-300"
+              ? "bg-[#e42526]/20 text-white"
+              : "bg-white/5 hover:bg-white/10 text-gray-300"
               }`}
           >
-            Parametrlər
+            {t.settings}
           </Link>
         )}
+
+        <div className="relative">
+          <button
+            onClick={() => setLangOpen(!langOpen)}
+            className="w-full flex items-center justify-between bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
+          >
+            <span className="flex items-center gap-2">
+              {lang === "az" && "🇦🇿 Azərbaycan"}
+              {lang === "en" && "ᴇɴ English"}
+              {lang === "tr" && "🇹🇷 Türkçe"}
+              {lang === "ru" && "🇷u Русский"}
+            </span>
+
+            <ChevronDown
+              size={16}
+              className={`transition ${langOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {langOpen && (
+            <div className="absolute bottom-12 left-0 w-full bg-[#1f2937] border border-white/10 rounded-xl shadow-lg overflow-hidden z-50">
+              <button
+                onClick={() => {
+                  setLang("az");
+                  setLangOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-white/10 flex gap-2"
+              >
+                🇦🇿 Azərbaycan
+              </button>
+
+              <button
+                onClick={() => {
+                  setLang("en");
+                  setLangOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-white/10 flex gap-2"
+              >
+                ᴇɴ English
+              </button>
+
+              <button
+                onClick={() => {
+                  setLang("tr");
+                  setLangOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-white/10 flex gap-2"
+              >
+                🇹🇷 Türkçe
+              </button>
+
+              <button
+                onClick={() => {
+                  setLang("ru");
+                  setLangOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-white/10 flex gap-2"
+              >
+                🇷u Русский
+              </button>
+            </div>
+          )}
+        </div>
 
         <button
           onClick={logout}
           className="w-full bg-[#e42526] hover:bg-[#c81f20] py-2.5 rounded-xl text-sm transition"
         >
-          Çıxış
+          {t.logout}
         </button>
       </div>
     </aside>

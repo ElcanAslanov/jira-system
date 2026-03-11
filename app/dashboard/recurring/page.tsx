@@ -77,7 +77,7 @@ export default function RecurringPage() {
 
   const [permissions, setPermissions] = useState<string[]>([]);
 
-const can = (key: string) => permissions.includes(key);
+  const can = (key: string) => permissions.includes(key);
 
   const [rules, setRules] = useState<Rule[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -105,40 +105,40 @@ const can = (key: string) => permissions.includes(key);
   }, [loading, user]);
 
   useEffect(() => {
-  if (!user?.id) return;
+    if (!user?.id) return;
 
-  async function loadPermissions() {
-    const { data: rolePerms } = await supabase
-      .from("role_permissions")
-      .select("permission_key")
-      .eq("role_id", (user as any)?.role_id);
+    async function loadPermissions() {
+      const { data: rolePerms } = await supabase
+        .from("role_permissions")
+        .select("permission_key")
+        .eq("role_id", (user as any)?.role_id);
 
-    const { data: userPerms } = await supabase
-      .from("user_permissions")
-      .select("permission_key, allowed")
-      .eq("user_id", user.id);
+      const { data: userPerms } = await supabase
+        .from("user_permissions")
+        .select("permission_key, allowed")
+        .eq("user_id", user.id);
 
-    let finalPerms =
-      rolePerms?.map((p: any) => p.permission_key) || [];
+      let finalPerms =
+        rolePerms?.map((p: any) => p.permission_key) || [];
 
-    if (userPerms) {
-      userPerms.forEach((p: any) => {
-        if (p.allowed === true && !finalPerms.includes(p.permission_key)) {
-          finalPerms.push(p.permission_key);
-        }
-        if (p.allowed === false) {
-          finalPerms = finalPerms.filter(
-            (k) => k !== p.permission_key
-          );
-        }
-      });
+      if (userPerms) {
+        userPerms.forEach((p: any) => {
+          if (p.allowed === true && !finalPerms.includes(p.permission_key)) {
+            finalPerms.push(p.permission_key);
+          }
+          if (p.allowed === false) {
+            finalPerms = finalPerms.filter(
+              (k) => k !== p.permission_key
+            );
+          }
+        });
+      }
+
+      setPermissions(finalPerms);
     }
 
-    setPermissions(finalPerms);
-  }
-
-  loadPermissions();
-}, [user?.id]);
+    loadPermissions();
+  }, [user?.id]);
 
   /* ================= ACTIONS ================= */
 
@@ -183,7 +183,7 @@ const can = (key: string) => permissions.includes(key);
         {/* HEADER */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <h1 className="text-xl sm:text-2xl font-bold">🌀 Dövrlü Tapşırıqlar</h1>
-         
+
         </div>
 
         {loadingData ? (
@@ -301,36 +301,36 @@ const can = (key: string) => permissions.includes(key);
                       </td>
 
                       {/* ACTIONS */}
-                   <td className="p-3 text-right space-x-2 whitespace-nowrap">
+                      <td className="p-3 text-right space-x-2 whitespace-nowrap">
 
-{can("recurring.view.button") && (
-  <button
-    onClick={() => openDrawer(r)}
-    className="border px-3 py-1.5 rounded-lg text-xs"
-  >
-    Bax
-  </button>
-)}
+                        {can("recurring.view.button") && (
+                          <button
+                            onClick={() => openDrawer(r)}
+                            className="border px-3 py-1.5 rounded-lg text-xs"
+                          >
+                            Bax
+                          </button>
+                        )}
 
-{can("recurring.pause.button") && (
-  <button
-    onClick={() => toggleActive(r)}
-    className="border px-3 py-1.5 rounded-lg text-xs"
-  >
-    {r.is_active ? "Pause" : "Resume"}
-  </button>
-)}
+                        {can("recurring.pause.button") && (
+                          <button
+                            onClick={() => toggleActive(r)}
+                            className="border px-3 py-1.5 rounded-lg text-xs"
+                          >
+                            {r.is_active ? "Pause" : "Resume"}
+                          </button>
+                        )}
 
-{can("recurring.delete.button") && (
-  <button
-    onClick={() => deleteRule(r.id)}
-    className="border px-3 py-1.5 rounded-lg text-xs text-red-600 border-red-200"
-  >
-    Sil
-  </button>
-)}
+                        {can("recurring.delete.button") && (
+                          <button
+                            onClick={() => deleteRule(r.id)}
+                            className="border px-3 py-1.5 rounded-lg text-xs text-red-600 border-red-200"
+                          >
+                            Sil
+                          </button>
+                        )}
 
-</td>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -424,36 +424,36 @@ const can = (key: string) => permissions.includes(key);
                   </div>
 
                   {/* Actions */}
-                <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                  <div className="mt-4 flex flex-col sm:flex-row gap-2">
 
-{can("recurring.view.button") && (
-  <button
-    onClick={() => openDrawer(r)}
-    className="border px-3 py-2 rounded-xl text-xs w-full sm:w-auto"
-  >
-    Bax
-  </button>
-)}
+                    {can("recurring.view.button") && (
+                      <button
+                        onClick={() => openDrawer(r)}
+                        className="border px-3 py-2 rounded-xl text-xs w-full sm:w-auto"
+                      >
+                        Bax
+                      </button>
+                    )}
 
-{can("recurring.pause.button") && (
-  <button
-    onClick={() => toggleActive(r)}
-    className="border px-3 py-2 rounded-xl text-xs w-full sm:w-auto"
-  >
-    {r.is_active ? "Pause" : "Resume"}
-  </button>
-)}
+                    {can("recurring.pause.button") && (
+                      <button
+                        onClick={() => toggleActive(r)}
+                        className="border px-3 py-2 rounded-xl text-xs w-full sm:w-auto"
+                      >
+                        {r.is_active ? "Pause" : "Resume"}
+                      </button>
+                    )}
 
-{can("recurring.delete.button") && (
-  <button
-    onClick={() => deleteRule(r.id)}
-    className="border px-3 py-2 rounded-xl text-xs text-red-600 border-red-200 w-full sm:w-auto"
-  >
-    Sil
-  </button>
-)}
+                    {can("recurring.delete.button") && (
+                      <button
+                        onClick={() => deleteRule(r.id)}
+                        className="border px-3 py-2 rounded-xl text-xs text-red-600 border-red-200 w-full sm:w-auto"
+                      >
+                        Sil
+                      </button>
+                    )}
 
-</div>
+                  </div>
                 </div>
               ))}
             </div>

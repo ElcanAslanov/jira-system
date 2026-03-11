@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import DebugErrorBoundary from "@/app/components/DebugErrorBoundary";
+import { useLang  } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 
 type GuideRelation = {
@@ -44,14 +46,15 @@ type Toast = {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
-const COLUMN_LABELS: Record<string, string> = {
-  full_name: "Ad Soyad",
-  email: "Email",
-  company_name: "Şirkət",
-  role_name: "Rol",
-  guides: "Rəhbər(lər)",   // ✅ əlavə et
-  // created_at: "Yaradılma",
-};
+function getColumnLabels(t: any) {
+  return {
+    full_name: t.name + " " + t.surname,
+    email: "Email",
+    company_name: t.company,
+    role_name: t.role,
+    guides: t.guides,
+  };
+}
 
 const MAIN_COLUMNS: Array<
   { key: "full_name" | "email" | "company_name" | "role_name" | "guides"; sortable?: boolean }
@@ -87,6 +90,9 @@ function cn(...xs: Array<string | false | null | undefined>) {
 }
 
 function EmployeesAdminPageInner() {
+
+  const { lang } = useLang ();
+  const t = translations[lang as keyof typeof translations];
   const [items, setItems] = useState<Employee[]>([]);
   const [meta, setMeta] = useState<{
     companies: Option[];
@@ -135,68 +141,63 @@ function EmployeesAdminPageInner() {
     setTimeout(() => setToast(null), 2500);
   }
   // ---------------- LOAD ----------------
-const load = async () => {
-  try {
-    setLoading(true);
+  const load = async () => {
+    try {
+      setLoading(true);
 
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
+     let token: string | null = null;
 
-    if (!token) {
-      console.warn("Token yoxdur");
+for (let i = 0; i < 5; i++) {
+  const { data } = await supabase.auth.getSession();
+  token = data?.session?.access_token || null;
+
+  if (token) break;
+
+  await new Promise((r) => setTimeout(r, 200));
+}
+
+if (!token) {
+  console.warn("Token yoxdur");
+  setLoading(false);
+  return;
+}
+
+      const [empRes, metaRes] = await Promise.all([
+        fetch("/api/admin/employees", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch("/api/employees/meta", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      const empData = await empRes.json();
+      const metaData = await metaRes.json();
+
+      setItems(empData.employees || []);
+
+      setMeta({
+        companies: metaData.companies ?? [],
+        departments: metaData.departments ?? [],
+        positions: metaData.positions ?? [],
+        roles: metaData.roles ?? [],
+        guides: metaData.guides ?? [],
+      });
+
+    } catch (err) {
+      console.error("LOAD ERROR:", err);
+    } finally {
       setLoading(false);
-      return;
     }
+  };
 
-    const [empRes, metaRes] = await Promise.all([
-      fetch("/api/admin/employees", {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      fetch("/api/employees/meta", {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ]);
-
-    const empData = await empRes.json();
-    const metaData = await metaRes.json();
-
-    setItems(empData.employees || []);
-
-    setMeta({
-      companies: metaData.companies ?? [],
-      departments: metaData.departments ?? [],
-      positions: metaData.positions ?? [],
-      roles: metaData.roles ?? [],
-      guides: metaData.guides ?? [],
-    });
-
-  } catch (err) {
-    console.error("LOAD ERROR:", err);
-  } finally {
-    setLoading(false);
-  }
-};
-
-useEffect(() => {
-  let mounted = true;
-
+  useEffect(() => {
   const init = async () => {
-    let session = null;
+    const { data } = await supabase.auth.getSession();
 
-    for (let i = 0; i < 10; i++) {
-      const { data } = await supabase.auth.getSession();
-      session = data?.session;
-
-      if (session) break;
-
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    if (!mounted) return;
-
-    if (!session) {
+    if (!data?.session) {
       console.warn("Session yoxdur");
       setLoading(false);
       return;
@@ -206,10 +207,6 @@ useEffect(() => {
   };
 
   init();
-
-  return () => {
-    mounted = false;
-  };
 }, []);
 
   // Esc closes modal
@@ -342,22 +339,22 @@ useEffect(() => {
   }, [page, totalPages]);
 
   useEffect(() => {
-  const onError = (e: any) => {
-    console.error("GLOBAL ERROR:", e.error || e.message);
-  };
+    const onError = (e: any) => {
+      console.error("GLOBAL ERROR:", e.error || e.message);
+    };
 
-  const onReject = (e: any) => {
-    console.error("PROMISE ERROR:", e.reason);
-  };
+    const onReject = (e: any) => {
+      console.error("PROMISE ERROR:", e.reason);
+    };
 
-  window.addEventListener("error", onError);
-  window.addEventListener("unhandledrejection", onReject);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onReject);
 
-  return () => {
-    window.removeEventListener("error", onError);
-    window.removeEventListener("unhandledrejection", onReject);
-  };
-}, []);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onReject);
+    };
+  }, []);
 
   const paginatedEmployees = useMemo(() => {
     const start = (safePage - 1) * pageSize;
@@ -412,7 +409,7 @@ useEffect(() => {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("İşçi silinsin?")) return;
+    if (!confirm(t.deleteEmployeeConfirm)) return;
 
     setBusyId(id);
 
@@ -456,13 +453,13 @@ useEffect(() => {
       <div className="bg-white rounded-2xl shadow-sm border p-6 md:p-8">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black text-slate-900">👥 İşçilər</h1>
-           
+            <h1 className="text-2xl font-black text-slate-900">👥 {t.employees}</h1>
+
           </div>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto flex-wrap">
             <div className="text-xs font-extrabold text-slate-500">
-              Göstərilir:{" "}
+              {t.showing}: {" "}
               <span className="text-slate-900">
                 {totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, totalItems)}
               </span>{" "}
@@ -479,7 +476,7 @@ useEffect(() => {
             >
               {PAGE_SIZE_OPTIONS.map((n) => (
                 <option key={n} value={n}>
-                  Səhifədə {n}
+                  {t.perPage} {n}
                 </option>
               ))}
             </select>
@@ -493,7 +490,7 @@ useEffect(() => {
                 disabled={safePage <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
-                ← Əvvəlki
+                ← {t.previous}
               </button>
               <div className="text-sm font-black text-slate-900">
                 {safePage} / {totalPages}
@@ -506,7 +503,7 @@ useEffect(() => {
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
-                Sonrakı →
+                {t.next} →
               </button>
             </div>
           </div>
@@ -515,39 +512,39 @@ useEffect(() => {
         {/* FILTER CARD (digər səhifə stili) */}
         <div className="border rounded-2xl overflow-hidden shadow-sm mb-6">
           <div className="px-6 py-4 bg-slate-50 border-b font-extrabold text-slate-700">
-            Axtarış & Filtrlər
+            {t.searchFilters}
           </div>
 
           <div className="p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
             {/* Search */}
-            <Field label="Axtar">
+            <Field label={t.search}>
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Ad / Email / Şirkət / Rol..."
+                placeholder={t.searchPlaceholder}
                 className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
               />
             </Field>
 
             {/* Sort */}
-            <Field label="Sıralama">
+            <Field label={t.sort}>
               <div className="flex gap-2">
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                   className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold"
                 >
-                  <option value="full_name">Ad Soyad</option>
-                  <option value="email">Email</option>
-                  <option value="company_name">Şirkət</option>
-                  <option value="role_name">Rol</option>
+                  <option value="full_name">{t.name} {t.surname}</option>
+                  <option value="email">{t.email}</option>
+                  <option value="company_name">{t.company}</option>
+                  <option value="role_name">{t.role}</option>
                   {/* <option value="created_at">Yaradılma</option> */}
                 </select>
 
                 <button
                   onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
                   className="px-4 py-3 rounded-xl border font-black bg-white hover:bg-slate-50"
-                  title="A→Z / Z→A"
+                  title={t.sort}
                 >
                   {sortDir === "asc" ? "A→Z" : "Z→A"}
                 </button>
@@ -555,9 +552,10 @@ useEffect(() => {
             </Field>
 
             {/* Companies multi */}
-            <Field label="Şirkətlər">
+            <Field label={t.company}>
               <MultiSelectPortal
-                placeholder="Şirkət seç"
+                t={t}
+                placeholder={t.selectCompany}
                 options={companyOptions}
                 selectedValues={selectedCompanyIds}
                 onChange={(vals) => {
@@ -582,7 +580,7 @@ useEffect(() => {
                 className="px-4 py-3 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-700"
                 onClick={() => load()}
               >
-                🔄 Yenilə
+                🔄 {t.refresh}
               </button>
 
               <button
@@ -596,7 +594,7 @@ useEffect(() => {
                   setPage(1);
                 }}
               >
-                🧹 Təmizlə
+                🧹 {t.clear}
               </button>
             </div>
           </div>
@@ -604,7 +602,7 @@ useEffect(() => {
 
         {/* TABLE */}
         {loading ? (
-          <div className="py-10 text-slate-600 font-bold">Yüklənir...</div>
+          <div className="py-10 text-slate-600 font-bold">{t.loading}</div>
         ) : (
           <div className="hidden md:block overflow-x-auto border rounded-2xl">
             <table className="w-full text-sm">
@@ -618,9 +616,9 @@ useEffect(() => {
                         c.sortable && "cursor-pointer hover:bg-slate-100"
                       )}
                       onClick={() => c.sortable && toggleSort(c.key)}
-                      title={c.sortable ? "Sırala" : undefined}
+                      title={c.sortable ? t.sort : undefined}
                     >
-                      {COLUMN_LABELS[c.key] || c.key}{" "}
+                      {getColumnLabels(t)[c.key] || c.key}
                       {sortBy === c.key ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                   ))}
@@ -668,14 +666,14 @@ useEffect(() => {
                           onClick={() => openEdit(e)}
                           className="px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-50"
                         >
-                          ✏️ Düzəliş et
+                          ✏️{t.edit}
                         </button>
                         <button
                           onClick={() => remove(e.id)}
                           className="px-3 py-2 rounded-xl font-black text-white bg-red-600 hover:bg-red-700"
                           disabled={busyId === e.id}
                         >
-                          {busyId === e.id ? "..." : "🗑️ Sil"}
+                          {busyId === e.id ? "..." : "🗑️ " + t.delete}
                         </button>
                       </div>
                     </td>
@@ -685,7 +683,7 @@ useEffect(() => {
                 {filteredEmployees.length === 0 && (
                   <tr>
                     <td colSpan={MAIN_COLUMNS.length + 1} className="p-10 text-center text-slate-500 font-bold">
-                      Heç bir işçi tapılmadı
+                      {t.employeesNotFound}
                     </td>
                   </tr>
                 )}
@@ -708,10 +706,10 @@ useEffect(() => {
             </div>
 
             <div className="mt-3 text-sm space-y-1">
-              <div>Şirkət: {e.companies?.name || "-"}</div>
-              <div>Rol: {e.roles?.name || "-"}</div>
+              <div>{t.company}: {e.companies?.name || "-"}</div>
+              <div>{t.role}: {e.roles?.name || "-"}</div>
               <div>
-                Rəhbər(lər):{" "}
+                {t.guides}:{" "}
                 {e.employee_guides?.length
                   ? e.employee_guides
                     .map((g) => {
@@ -726,7 +724,7 @@ useEffect(() => {
                     .join(", ")
                   : "-"}
               </div>
-              <div>Tarix: {formatDMY(e.created_at)}</div>
+              <div>{t.date}: {formatDMY(e.created_at)}</div>
             </div>
 
             <div className="flex gap-2 mt-4">
@@ -734,14 +732,14 @@ useEffect(() => {
                 onClick={() => openEdit(e)}
                 className="flex-1 py-2 rounded-xl border font-bold"
               >
-                Düzəliş et
+                {t.edit}
               </button>
 
               <button
                 onClick={() => remove(e.id)}
                 className="flex-1 py-2 rounded-xl bg-red-600 text-white font-bold"
               >
-                Sil
+                {t.delete}
               </button>
             </div>
           </div>
@@ -757,7 +755,7 @@ useEffect(() => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg md:text-xl font-black text-slate-900">
-                  ✏️ İşçini düzəliş et
+                  ✏️  {t.editEmployee}
                 </h2>
                 {/* <p className="text-sm text-slate-500 mt-1">
                   Dəyişiklikləri edib “Yadda saxla” bas.
@@ -768,21 +766,21 @@ useEffect(() => {
                 className="px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-50"
                 onClick={closeEdit}
               >
-                ✖ Bağla
+                ✖ {t.close}
               </button>
             </div>
 
             {/* Tabs */}
             <div className="mt-4 flex flex-wrap gap-2">
-              <TabBtn title="Əsas" active={editTab === "BASIC"} onClick={() => setEditTab("BASIC")} />
-              <TabBtn title="Şirkət" active={editTab === "COMPANY"} onClick={() => setEditTab("COMPANY")} />
-              <TabBtn title="Rəhbər" active={editTab === "GUIDES"} onClick={() => setEditTab("GUIDES")} />
+              <TabBtn title={t.basic} active={editTab === "BASIC"} onClick={() => setEditTab("BASIC")} />
+              <TabBtn title={t.companyTab} active={editTab === "COMPANY"} onClick={() => setEditTab("COMPANY")} />
+              <TabBtn title={t.guidesTab} active={editTab === "GUIDES"} onClick={() => setEditTab("GUIDES")} />
             </div>
 
             {/* BASIC */}
             {editTab === "BASIC" && (
               <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Ad">
+                <Field label={t.name}>
                   <input
                     value={editForm.ad}
                     onChange={(e) => setEditForm((p) => ({ ...p, ad: e.target.value }))}
@@ -791,7 +789,7 @@ useEffect(() => {
                   />
                 </Field>
 
-                <Field label="Soyad">
+                <Field label={t.surname}>
                   <input
                     value={editForm.soyad}
                     onChange={(e) => setEditForm((p) => ({ ...p, soyad: e.target.value }))}
@@ -800,7 +798,7 @@ useEffect(() => {
                   />
                 </Field>
 
-                <Field label="Ata adı">
+                <Field label={t.fatherName}>
                   <input
                     value={editForm.ata_adi}
                     onChange={(e) => setEditForm((p) => ({ ...p, ata_adi: e.target.value }))}
@@ -809,7 +807,7 @@ useEffect(() => {
                   />
                 </Field>
 
-                <Field label="Əlaqə nömrəsi">
+                <Field label={t.phone}>
                   <input
                     value={editForm.elaqe_nomresi}
                     onChange={(e) => setEditForm((p) => ({ ...p, elaqe_nomresi: e.target.value }))}
@@ -823,7 +821,8 @@ useEffect(() => {
             {/* COMPANY */}
             {editTab === "COMPANY" && (
               <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Şirkət">
+                <Field label={t.company}>
+
                   <select
                     value={editForm.company_id}
                     onChange={(e) =>
@@ -835,7 +834,7 @@ useEffect(() => {
                     }
                     className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold bg-white"
                   >
-                    <option value="">Şirkət seç</option>
+                    <option value="">{t.selectCompany}</option>
                     {meta.companies.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -844,7 +843,7 @@ useEffect(() => {
                   </select>
                 </Field>
 
-                <Field label="Departament">
+                <Field label={t.department}>
                   <select
                     value={editForm.department_id}
                     onChange={(e) => setEditForm((p) => ({ ...p, department_id: e.target.value }))}
@@ -852,7 +851,7 @@ useEffect(() => {
                     disabled={!editForm.company_id}
                   >
                     <option value="">
-                      {editForm.company_id ? "Departament seç" : "Əvvəl şirkət seç"}
+                      {editForm.company_id ? t.selectDepartment : t.selectCompanyFirst}
                     </option>
                     {filteredDepartments.map((d) => (
                       <option key={d.id} value={d.id}>
@@ -862,13 +861,14 @@ useEffect(() => {
                   </select>
                 </Field>
 
-                <Field label="Vəzifə">
+                <Field label={t.position}>
+
                   <select
                     value={editForm.position_id}
                     onChange={(e) => setEditForm((p) => ({ ...p, position_id: e.target.value }))}
                     className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold bg-white"
                   >
-                    <option value="">Vəzifə seç</option>
+                    <option value="">{t.selectPosition}</option>
                     {meta.positions.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -877,13 +877,13 @@ useEffect(() => {
                   </select>
                 </Field>
 
-                <Field label="Rol">
+                <Field label={t.role}>
                   <select
                     value={editForm.role_id}
                     onChange={(e) => setEditForm((p) => ({ ...p, role_id: e.target.value }))}
                     className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-bold bg-white"
                   >
-                    <option value="">Rol seç</option>
+                    <option value="">{t.selectRole}</option>
                     {meta.roles.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name}
@@ -898,7 +898,8 @@ useEffect(() => {
             {editTab === "GUIDES" && (
               <div className="mt-5">
                 <GuideMultiDropdown
-                  label="Rəhbər(lər) seç"
+                t={t}
+                  label={t.selectGuide}
                   options={guideOptions}
                   selectedIds={editForm.guide_ids}
                   setSelectedIds={(ids) => setEditForm((p) => ({ ...p, guide_ids: ids }))}
@@ -916,14 +917,14 @@ useEffect(() => {
                   busyId === edit?.id ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
                 )}
               >
-                {busyId === edit?.id ? "Yadda saxlanılır..." : "✅ Yadda saxla"}
+                {busyId === edit?.id ? t.saving : "✅ " + t.save}
               </button>
 
               <button
                 onClick={closeEdit}
                 className="flex-1 px-4 py-3 rounded-xl font-black border bg-white hover:bg-slate-50"
               >
-                Ləğv et
+                {t.cancel}
               </button>
             </div>
           </div>
@@ -985,18 +986,20 @@ function MultiSelectPortal({
   options,
   selectedValues,
   onChange,
+  t
 }: {
   placeholder: string;
   options: { value: string; label: string }[];
   selectedValues: string[];
   onChange: (vals: string[]) => void;
+  t: any;
 }) {
 
-    const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-useEffect(() => {
-  setMounted(true);
-}, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -1059,7 +1062,9 @@ useEffect(() => {
         )}
       >
         <span className={cn(selectedValues.length ? "text-slate-900" : "text-slate-400")}>
-          {selectedValues.length ? `${selectedValues.length} seçildi` : placeholder}
+          {selectedValues.length
+            ? `${selectedValues.length} ${t.selected}`
+            : placeholder}
         </span>
         <span className="text-blue-600">{open ? "▲" : "▼"}</span>
       </div>
@@ -1075,7 +1080,7 @@ useEffect(() => {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Axtar..."
+                placeholder={t.search}
                 autoFocus
                 className="w-full border rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-bold"
               />
@@ -1083,7 +1088,7 @@ useEffect(() => {
 
             <div className="max-h-[260px] overflow-y-auto">
               {filtered.length === 0 && (
-                <div className="p-3 text-sm text-slate-500 font-bold">Nəticə tapılmadı</div>
+                <div className="p-3 text-sm text-slate-500 font-bold">{t.notFound}</div>
               )}
 
               {filtered.map((o) => {
@@ -1117,14 +1122,14 @@ useEffect(() => {
                 className="flex-1 px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-100"
                 onClick={() => onChange([])}
               >
-                Təmizlə
+                {t.clear}
               </button>
               <button
                 type="button"
                 className="flex-1 px-3 py-2 rounded-xl font-black bg-blue-600 text-white hover:bg-blue-700"
                 onClick={close}
               >
-                Tamamla
+                {t.done}
               </button>
             </div>
           </div>,
@@ -1149,11 +1154,13 @@ function GuideMultiDropdown({
   options,
   selectedIds,
   setSelectedIds,
+  t
 }: {
   label: string;
   options: { value: string; label: string }[];
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
+  t: any
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -1211,7 +1218,9 @@ function GuideMultiDropdown({
           )}
         >
           <span className={cn(selectedIds.length ? "text-slate-900" : "text-slate-400")}>
-            {selectedIds.length ? `${selectedIds.length} rəhbər seçildi` : "Rəhbər seç"}
+            {selectedIds.length
+              ? `${selectedIds.length} ${t.guidesSelected}`
+              : t.selectGuide}
           </span>
           <span className="text-blue-600">{open ? "▲" : "▼"}</span>
         </div>
@@ -1227,7 +1236,7 @@ function GuideMultiDropdown({
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Axtar..."
+                  placeholder={t.search}
                   autoFocus
                   className="w-full border rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-bold"
                 />
@@ -1235,7 +1244,7 @@ function GuideMultiDropdown({
 
               <div className="max-h-[260px] overflow-y-auto">
                 {filtered.length === 0 && (
-                  <div className="p-3 text-sm text-slate-500 font-bold">Nəticə tapılmadı</div>
+                  <div className="p-3 text-sm text-slate-500 font-bold">{t.notFound}</div>
                 )}
 
                 {filtered.map((o) => {
@@ -1269,14 +1278,14 @@ function GuideMultiDropdown({
                   className="flex-1 px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-100"
                   onClick={() => setSelectedIds([])}
                 >
-                  Təmizlə
+                  {t.clear}
                 </button>
                 <button
                   type="button"
                   className="flex-1 px-3 py-2 rounded-xl font-black bg-blue-600 text-white hover:bg-blue-700"
                   onClick={() => setOpen(false)}
                 >
-                  Bitir
+                  {t.done}
                 </button>
               </div>
             </div>,
@@ -1293,7 +1302,7 @@ function GuideMultiDropdown({
       </Field>
     </div>
   );
-}export default function EmployeesAdminPage() {
+} export default function EmployeesAdminPage() {
   return (
     <DebugErrorBoundary>
       <EmployeesAdminPageInner />

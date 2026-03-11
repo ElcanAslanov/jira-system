@@ -11,10 +11,10 @@ function checkCronSecret(request: NextRequest) {
 /* ================= HELPERS ================= */
 
 function todayISO() {
-  const bakuTime = new Date(
+  const baku = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Baku" })
   );
-  return bakuTime.toISOString().split("T")[0];
+  return baku.toISOString().split("T")[0];
 }
 
 function extractAssignedIds(raw: any): string[] {
@@ -53,12 +53,8 @@ function extractAssignedIds(raw: any): string[] {
 
 export async function GET(request: NextRequest) {
   try {
-    /* 🔐 Secret check */
     if (!checkCronSecret(request)) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const supabase = createClient(
@@ -77,30 +73,32 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true);
 
     if (error) {
+      console.error(error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     if (!rules || rules.length === 0) {
-      return NextResponse.json({ message: "No rules due today" });
+      return NextResponse.json({ message: "No rules today" });
     }
 
     for (const rule of rules) {
       console.log("PROCESSING:", rule.title);
 
-      /* 1️⃣ End date check */
+      /* END DATE */
       if (rule.end_date && rule.end_date < today) {
         await supabase
           .from("recurring_rules")
           .update({ is_active: false })
           .eq("id", rule.id);
 
-        console.log("AUTO DEACTIVATED:", rule.title);
+        console.log("AUTO DISABLED:", rule.title);
         continue;
       }
 
-      /* 2️⃣ WEEKLY weekday check */
+      /* WEEKLY weekday check */
       if (rule.frequency === "WEEKLY") {
         const weekDays: number[] = rule.week_days || [];
+
         const checkDate = new Date(rule.next_run_date + "T00:00:00+04:00");
         const dow = checkDate.getDay();
 
@@ -115,12 +113,12 @@ export async function GET(request: NextRequest) {
             })
             .eq("id", rule.id);
 
-          console.log("WEEKLY SKIPPED:", rule.title);
+          console.log("SKIPPED WEEKDAY:", rule.title);
           continue;
         }
       }
 
-      /* 3️⃣ Duplicate protection */
+      /* DUPLICATE PROTECTION */
       const { data: existing } = await supabase
         .from("tasks")
         .select("id")
@@ -129,11 +127,11 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (existing && existing.length > 0) {
-        console.log("ALREADY EXISTS:", rule.title);
+        console.log("TASK EXISTS:", rule.title);
         continue;
       }
 
-      /* 4️⃣ Creator mapping */
+      /* CREATOR */
       const { data: creator } = await supabase
         .from("employees")
         .select("id")
@@ -145,8 +143,8 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      /* 5️⃣ Create task */
-      const { data: createdTask } = await supabase
+      /* CREATE TASK */
+      const { data: createdTask, error: createErr } = await supabase
         .from("tasks")
         .insert({
           title: rule.title,
@@ -162,25 +160,23 @@ export async function GET(request: NextRequest) {
         .select("id")
         .single();
 
-      if (!createdTask) continue;
+      if (createErr || !createdTask) {
+        console.error("TASK CREATE ERROR:", createErr);
+        continue;
+      }
 
       console.log("TASK CREATED:", createdTask.id);
 
-      /* 6️⃣ Assignees */
+      /* ASSIGNEES */
       const assignedIds = extractAssignedIds(rule.assigned_to);
 
       if (assignedIds.length > 0) {
         const { data: employees } = await supabase
           .from("employees")
           .select("id,user_id")
-          .or(
-            `id.in.(${assignedIds.join(",")}),user_id.in.(${assignedIds.join(
-              ","
-            )})`
-          );
+          .in("user_id", assignedIds);
 
-        const employeeIds =
-          employees?.map((e: any) => e.id) ?? [];
+        const employeeIds = employees?.map((e) => e.id) ?? [];
 
         if (employeeIds.length > 0) {
           await supabase.from("task_assignees").insert(
@@ -192,7 +188,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      /* 7️⃣ Next run update */
+      /* NEXT RUN */
       let next = new Date(rule.next_run_date + "T00:00:00+04:00");
 
       if (rule.frequency === "DAILY") {
@@ -200,7 +196,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (rule.frequency === "WEEKLY") {
-        next.setDate(next.getDate() + 1);
+        next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
       }
 
       if (rule.frequency === "MONTHLY") {

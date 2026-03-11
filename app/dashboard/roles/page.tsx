@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 type Role = {
   id: string;
@@ -8,6 +10,10 @@ type Role = {
 };
 
 export default function RolesPage() {
+
+  const { lang } = useLang();
+  const t = translations[lang];
+
   const [roles, setRoles] = useState<Role[]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -24,6 +30,12 @@ export default function RolesPage() {
   }, []);
 
   const createRole = async () => {
+
+    if (!name.trim()) {
+      alert(t.emptyRoleName);
+      return;
+    }
+
     const res = await fetch("/api/roles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -41,7 +53,8 @@ export default function RolesPage() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Silinsin?")) return;
+
+    if (!confirm(t.confirmDelete)) return;
 
     await fetch(`/api/roles?id=${id}`, {
       method: "DELETE",
@@ -53,16 +66,19 @@ export default function RolesPage() {
   return (
     <div className="p-6 md:p-10 max-w-5xl mx-auto">
       <div className="bg-white rounded-xl shadow p-6 md:p-8">
+
         <h1 className="text-2xl font-bold mb-6">
-          Rollar
+          {t.roles}
         </h1>
 
         {/* Create */}
+
         <div className="flex flex-col md:flex-row gap-4 mb-6">
+
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Yeni rol adı"
+            placeholder={t.newRole}
             className="flex-1 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
           />
 
@@ -70,20 +86,25 @@ export default function RolesPage() {
             onClick={createRole}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
           >
-            Əlavə et
+            {t.add}
           </button>
+
         </div>
 
         {/* List */}
+
         {loading ? (
-          <p>Yüklənir...</p>
+          <p>{t.loading}</p>
         ) : (
           <div className="space-y-3">
+
             {roles.map((r) => (
+
               <div
                 key={r.id}
                 className="border rounded-lg p-4 flex flex-col md:flex-row md:justify-between md:items-center gap-3"
               >
+
                 <div className="font-semibold">
                   {r.name}
                 </div>
@@ -92,12 +113,16 @@ export default function RolesPage() {
                   onClick={() => remove(r.id)}
                   className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
                 >
-                  Sil
+                  {t.delete}
                 </button>
+
               </div>
+
             ))}
+
           </div>
         )}
+
       </div>
     </div>
   );
