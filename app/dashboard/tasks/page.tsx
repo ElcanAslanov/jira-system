@@ -797,21 +797,33 @@ export default function TasksPage() {
     }
   }, [openTaskId, rawTasks]);
 
-  // realtime (only when user ready)
-  useEffect(() => {
-    if (!user) return;
+useEffect(() => {
+  if (!user?.id) return;
 
-    const channel = supabase
-      .channel("tasks-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => {
-        // loadTasks();
-      })
-      .subscribe();
+  const channel = supabase
+    .channel("tasks-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "tasks",
+      },
+      async (payload) => {
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id]);
+        // 🔥 yeni task gəldi
+        await loadTasks();
+
+        message.success("Yeni tapşırıq əlavə edildi");
+
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user?.id, loadTasks]);
 
   useEffect(() => {
     if (!user?.id) return;
