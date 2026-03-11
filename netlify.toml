@@ -10,4 +10,5 @@
 
 [[scheduled]]
   path = "/.netlify/functions/cron"
-  schedule = "0 0 * * *"
+  schedule = "*/5 * * * *"
+  
