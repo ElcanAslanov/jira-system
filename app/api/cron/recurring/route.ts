@@ -11,10 +11,16 @@ function checkCronSecret(request: NextRequest) {
 /* ================= HELPERS ================= */
 
 function todayISO() {
+  const now = new Date();
   const baku = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Baku" })
+    now.toLocaleString("en-US", { timeZone: "Asia/Baku" })
   );
-  return baku.toISOString().split("T")[0];
+
+  const y = baku.getFullYear();
+  const m = String(baku.getMonth() + 1).padStart(2, "0");
+  const d = String(baku.getDate()).padStart(2, "0");
+
+  return `${y}-${m}-${d}`;
 }
 
 function extractAssignedIds(raw: any): string[] {
@@ -43,6 +49,7 @@ function extractAssignedIds(raw: any): string[] {
   if (typeof raw === "object") {
     const one =
       raw.id || raw.user_id || raw.employee_id || raw.value || null;
+
     return one ? [String(one)] : [];
   }
 
@@ -54,7 +61,10 @@ function extractAssignedIds(raw: any): string[] {
 export async function GET(request: NextRequest) {
   try {
     if (!checkCronSecret(request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const supabase = createClient(
@@ -64,7 +74,8 @@ export async function GET(request: NextRequest) {
 
     const today = todayISO();
 
-    console.log("CRON START:", today);
+    console.log("CRON START");
+    console.log("TODAY:", today);
 
     const { data: rules, error } = await supabase
       .from("recurring_rules")
@@ -73,19 +84,25 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true);
 
     if (error) {
-      console.error(error);
+      console.error("RULE FETCH ERROR:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     if (!rules || rules.length === 0) {
+      console.log("NO RULES TODAY");
       return NextResponse.json({ message: "No rules today" });
     }
 
+    console.log("RULE COUNT:", rules.length);
+
     for (const rule of rules) {
+
       console.log("PROCESSING:", rule.title);
 
       /* END DATE */
+
       if (rule.end_date && rule.end_date < today) {
+
         await supabase
           .from("recurring_rules")
           .update({ is_active: false })
@@ -95,15 +112,20 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      /* WEEKLY weekday check */
+      /* WEEKLY CHECK */
+
       if (rule.frequency === "WEEKLY") {
+
         const weekDays: number[] = rule.week_days || [];
 
         const checkDate = new Date(rule.next_run_date + "T00:00:00+04:00");
+
         const dow = checkDate.getDay();
 
         if (!weekDays.includes(dow)) {
+
           const next = new Date(rule.next_run_date + "T00:00:00+04:00");
+
           next.setDate(next.getDate() + 1);
 
           await supabase
@@ -114,11 +136,13 @@ export async function GET(request: NextRequest) {
             .eq("id", rule.id);
 
           console.log("SKIPPED WEEKDAY:", rule.title);
+
           continue;
         }
       }
 
       /* DUPLICATE PROTECTION */
+
       const { data: existing } = await supabase
         .from("tasks")
         .select("id")
@@ -127,23 +151,28 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (existing && existing.length > 0) {
-        console.log("TASK EXISTS:", rule.title);
+
+        console.log("TASK ALREADY EXISTS:", rule.title);
+
         continue;
       }
 
       /* CREATOR */
+
+      let creatorId: string | null = null;
+
       const { data: creator } = await supabase
         .from("employees")
         .select("id")
         .eq("user_id", rule.created_by)
-        .single();
+        .maybeSingle();
 
-      if (!creator) {
-        console.log("CREATOR NOT FOUND");
-        continue;
+      if (creator) {
+        creatorId = creator.id;
       }
 
       /* CREATE TASK */
+
       const { data: createdTask, error: createErr } = await supabase
         .from("tasks")
         .insert({
@@ -154,23 +183,27 @@ export async function GET(request: NextRequest) {
           start_date: rule.next_run_date,
           due_date: rule.next_run_date,
           recurring_rule_id: rule.id,
-          created_by: creator.id,
+          created_by: creatorId,
           company_id: rule.company_id ?? null,
         })
         .select("id")
         .single();
 
       if (createErr || !createdTask) {
+
         console.error("TASK CREATE ERROR:", createErr);
+
         continue;
       }
 
       console.log("TASK CREATED:", createdTask.id);
 
       /* ASSIGNEES */
+
       const assignedIds = extractAssignedIds(rule.assigned_to);
 
       if (assignedIds.length > 0) {
+
         const { data: employees } = await supabase
           .from("employees")
           .select("id,user_id")
@@ -179,16 +212,20 @@ export async function GET(request: NextRequest) {
         const employeeIds = employees?.map((e) => e.id) ?? [];
 
         if (employeeIds.length > 0) {
-          await supabase.from("task_assignees").insert(
-            employeeIds.map((empId) => ({
-              task_id: createdTask.id,
-              employee_id: empId,
-            }))
-          );
+
+          await supabase
+            .from("task_assignees")
+            .insert(
+              employeeIds.map((empId) => ({
+                task_id: createdTask.id,
+                employee_id: empId,
+              }))
+            );
         }
       }
 
-      /* NEXT RUN */
+      /* NEXT RUN DATE */
+
       let next = new Date(rule.next_run_date + "T00:00:00+04:00");
 
       if (rule.frequency === "DAILY") {
@@ -213,10 +250,14 @@ export async function GET(request: NextRequest) {
       console.log("NEXT UPDATED:", rule.title);
     }
 
+    console.log("CRON FINISHED");
+
     return NextResponse.json({ message: "Cron success" });
 
   } catch (err: any) {
+
     console.error("CRON ERROR:", err);
+
     return NextResponse.json(
       { error: err.message || "Cron failed" },
       { status: 500 }
