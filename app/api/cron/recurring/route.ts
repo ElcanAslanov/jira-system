@@ -159,17 +159,17 @@ export async function GET(request: NextRequest) {
 
       /* CREATOR */
 
-      let creatorId: string | null = null;
+     let creatorId = null;
 
-      const { data: creator } = await supabase
-        .from("employees")
-        .select("id")
-        .eq("user_id", rule.created_by)
-        .maybeSingle();
+const { data: creator } = await supabase
+  .from("employees")
+  .select("id")
+  .eq("user_id", rule.created_by)
+  .maybeSingle();
 
-      if (creator) {
-        creatorId = creator.id;
-      }
+if (creator) {
+  creatorId = creator.id;
+}
 
       /* CREATE TASK */
 
