@@ -11,16 +11,14 @@ function checkCronSecret(request: NextRequest) {
 /* ================= HELPERS ================= */
 
 function todayISO() {
-  const now = new Date();
-  const baku = new Date(
-    now.toLocaleString("en-US", { timeZone: "Asia/Baku" })
-  );
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Baku",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 
-  const y = baku.getFullYear();
-  const m = String(baku.getMonth() + 1).padStart(2, "0");
-  const d = String(baku.getDate()).padStart(2, "0");
-
-  return `${y}-${m}-${d}`;
+  return formatter.format(new Date());
 }
 
 function extractAssignedIds(raw: any): string[] {
@@ -59,7 +57,9 @@ function extractAssignedIds(raw: any): string[] {
 /* ================= CRON ================= */
 
 export async function GET(request: NextRequest) {
+
   try {
+
     if (!checkCronSecret(request)) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -109,135 +109,129 @@ export async function GET(request: NextRequest) {
           .eq("id", rule.id);
 
         console.log("AUTO DISABLED:", rule.title);
-        continue;
-      }
-
-      /* WEEKLY CHECK */
-
-      if (rule.frequency === "WEEKLY") {
-
-        const weekDays: number[] = rule.week_days || [];
-
-        const checkDate = new Date(rule.next_run_date + "T00:00:00+04:00");
-
-        const dow = checkDate.getDay();
-
-        if (!weekDays.includes(dow)) {
-
-          const next = new Date(rule.next_run_date + "T00:00:00+04:00");
-
-          next.setDate(next.getDate() + 1);
-
-          await supabase
-            .from("recurring_rules")
-            .update({
-              next_run_date: next.toISOString().split("T")[0],
-            })
-            .eq("id", rule.id);
-
-          console.log("SKIPPED WEEKDAY:", rule.title);
-
-          continue;
-        }
-      }
-
-      /* DUPLICATE PROTECTION */
-
-      const { data: existing } = await supabase
-        .from("tasks")
-        .select("id")
-        .eq("recurring_rule_id", rule.id)
-        .eq("start_date", rule.next_run_date)
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-
-        console.log("TASK ALREADY EXISTS:", rule.title);
 
         continue;
       }
-
-      /* CREATOR */
-
-     let creatorId = null;
-
-const { data: creator } = await supabase
-  .from("employees")
-  .select("id")
-  .eq("user_id", rule.created_by)
-  .maybeSingle();
-
-if (creator) {
-  creatorId = creator.id;
-}
-
-      /* CREATE TASK */
-
-      const { data: createdTask, error: createErr } = await supabase
-        .from("tasks")
-        .insert({
-          title: rule.title,
-          description: rule.description,
-          status: "TODO",
-          priority: rule.priority ?? "MEDIUM",
-          start_date: rule.next_run_date,
-          due_date: rule.next_run_date,
-          recurring_rule_id: rule.id,
-          created_by: creatorId,
-          company_id: rule.company_id ?? null,
-        })
-        .select("id")
-        .single();
-
-      if (createErr || !createdTask) {
-
-        console.error("TASK CREATE ERROR:", createErr);
-
-        continue;
-      }
-
-      console.log("TASK CREATED:", createdTask.id);
-
-      /* ASSIGNEES */
-
-      const assignedIds = extractAssignedIds(rule.assigned_to);
-
-      if (assignedIds.length > 0) {
-
-        const { data: employees } = await supabase
-          .from("employees")
-          .select("id,user_id")
-          .in("user_id", assignedIds);
-
-        const employeeIds = employees?.map((e) => e.id) ?? [];
-
-        if (employeeIds.length > 0) {
-
-          await supabase
-            .from("task_assignees")
-            .insert(
-              employeeIds.map((empId) => ({
-                task_id: createdTask.id,
-                employee_id: empId,
-              }))
-            );
-        }
-      }
-
-      /* NEXT RUN DATE */
 
       let next = new Date(rule.next_run_date + "T00:00:00+04:00");
 
-      if (rule.frequency === "DAILY") {
-        next.setDate(next.getDate() + (rule.interval ?? 1));
-      }
+      /* MISS RUN LOOP */
 
-      if (rule.frequency === "WEEKLY") {
-        next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
-      }
+      while (next.toISOString().split("T")[0] <= today) {
 
-      if (rule.frequency === "MONTHLY") {
-        next.setMonth(next.getMonth() + (rule.interval ?? 1));
+        const runDate = next.toISOString().split("T")[0];
+
+        /* WEEKLY CHECK */
+
+        if (rule.frequency === "WEEKLY") {
+
+          const weekDays: number[] = rule.week_days || [];
+          const dow = next.getDay();
+
+          if (!weekDays.includes(dow)) {
+
+            next.setDate(next.getDate() + 1);
+            continue;
+          }
+        }
+
+        /* DUPLICATE PROTECTION */
+
+        const { data: existing } = await supabase
+          .from("tasks")
+          .select("id")
+          .eq("recurring_rule_id", rule.id)
+          .eq("start_date", runDate)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+
+          console.log("TASK EXISTS:", rule.title, runDate);
+
+        } else {
+
+          /* CREATOR */
+
+          let creatorId = null;
+
+          const { data: creator } = await supabase
+            .from("employees")
+            .select("id")
+            .eq("user_id", rule.created_by)
+            .maybeSingle();
+
+          if (creator) {
+            creatorId = creator.id;
+          }
+
+          /* CREATE TASK */
+
+          const { data: createdTask, error: createErr } = await supabase
+            .from("tasks")
+            .insert({
+              title: rule.title,
+              description: rule.description,
+              status: "TODO",
+              priority: rule.priority ?? "MEDIUM",
+              start_date: runDate,
+              due_date: runDate,
+              recurring_rule_id: rule.id,
+              created_by: creatorId,
+              company_id: rule.company_id ?? null,
+            })
+            .select("id")
+            .single();
+
+          if (createErr || !createdTask) {
+
+            console.error("TASK CREATE ERROR:", createErr);
+
+          } else {
+
+            console.log("TASK CREATED:", createdTask.id);
+
+            /* ASSIGNEES */
+
+            const assignedIds = extractAssignedIds(rule.assigned_to);
+
+            if (assignedIds.length > 0) {
+
+              const { data: employees } = await supabase
+                .from("employees")
+                .select("id,user_id")
+                .in("user_id", assignedIds);
+
+              const employeeIds = employees?.map((e) => e.id) ?? [];
+
+              if (employeeIds.length > 0) {
+
+                await supabase
+                  .from("task_assignees")
+                  .insert(
+                    employeeIds.map((empId) => ({
+                      task_id: createdTask.id,
+                      employee_id: empId,
+                    }))
+                  );
+              }
+            }
+          }
+        }
+
+        /* NEXT STEP */
+
+        if (rule.frequency === "DAILY") {
+          next.setDate(next.getDate() + (rule.interval ?? 1));
+        }
+
+        if (rule.frequency === "WEEKLY") {
+          next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
+        }
+
+        if (rule.frequency === "MONTHLY") {
+          next.setMonth(next.getMonth() + (rule.interval ?? 1));
+        }
+
       }
 
       await supabase
@@ -248,6 +242,7 @@ if (creator) {
         .eq("id", rule.id);
 
       console.log("NEXT UPDATED:", rule.title);
+
     }
 
     console.log("CRON FINISHED");
