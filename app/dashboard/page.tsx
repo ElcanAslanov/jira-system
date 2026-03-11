@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect,useState } from "react"
+import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 
 import {
@@ -69,15 +69,15 @@ export default function DashboardPage(){
  },[])
 
  if(loading){
-  return <div className="p-10">Loading dashboard...</div>
+  return <div className="p-6">Loading dashboard...</div>
  }
 
  if(error){
-  return <div className="p-10 text-red-600">{error}</div>
+  return <div className="p-6 text-red-600">{error}</div>
  }
 
  if(!stats){
-  return <div className="p-10">No data</div>
+  return <div className="p-6">No data</div>
  }
 
  const statusData = [
@@ -96,15 +96,15 @@ export default function DashboardPage(){
 
  return (
 
-<div className="p-8 space-y-10 bg-gray-50 min-h-screen">
+<div className="p-4 md:p-6 lg:p-8 space-y-8 bg-gray-50 min-h-screen">
 
-<h1 className="text-3xl font-bold">
+<h1 className="text-2xl md:text-3xl font-bold">
 Dashboard
 </h1>
 
 {/* KPI */}
 
-<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
 
 <KpiCard title="Assigned To Me" value={stats?.assignedToMe ?? 0} color="text-indigo-600"/>
 <KpiCard title="Created By Me" value={stats?.createdByMe ?? 0} color="text-purple-600"/>
@@ -118,15 +118,15 @@ Dashboard
 
 {/* CHARTS */}
 
-<div className="grid lg:grid-cols-2 gap-6">
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-<div className="bg-white rounded-2xl shadow border p-6">
+<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
 <h2 className="font-bold mb-4">
 Tasks by Status
 </h2>
 
-<ResponsiveContainer width="100%" height={320}>
+<ResponsiveContainer width="100%" height={260}>
 
 <PieChart>
 
@@ -134,7 +134,7 @@ Tasks by Status
 data={statusData}
 dataKey="value"
 nameKey="name"
-outerRadius={110}
+outerRadius={90}
 >
 
 {statusData.map((entry,index)=>(
@@ -152,13 +152,13 @@ outerRadius={110}
 </div>
 
 
-<div className="bg-white rounded-2xl shadow border p-6">
+<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
 <h2 className="font-bold mb-4">
 Tasks by Priority
 </h2>
 
-<ResponsiveContainer width="100%" height={320}>
+<ResponsiveContainer width="100%" height={260}>
 
 <BarChart data={priorityData}>
 
@@ -187,15 +187,15 @@ radius={[8,8,0,0]}
 
 {/* ANALYTICS */}
 
-<div className="grid lg:grid-cols-2 gap-6">
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-<div className="bg-white rounded-2xl shadow border p-6">
+<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
 <h2 className="font-bold mb-4">
 Most Overdue Employees
 </h2>
 
-<ResponsiveContainer width="100%" height={320}>
+<ResponsiveContainer width="100%" height={260}>
 
 <BarChart data={stats?.overdueUsers ?? []}>
 
@@ -220,13 +220,13 @@ radius={[8,8,0,0]}
 </div>
 
 
-<div className="bg-white rounded-2xl shadow border p-6">
+<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
 <h2 className="font-bold mb-4">
 Employee Productivity
 </h2>
 
-<ResponsiveContainer width="100%" height={320}>
+<ResponsiveContainer width="100%" height={260}>
 
 <BarChart data={stats?.productivity ?? []}>
 
@@ -255,11 +255,44 @@ radius={[8,8,0,0]}
 
 {/* OVERDUE TASKS */}
 
-<div className="bg-white rounded-2xl shadow border p-6">
+<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
 <h2 className="font-bold mb-4 text-red-600">
 Overdue Tasks
 </h2>
+
+{/* MOBILE CARDS */}
+
+<div className="md:hidden space-y-3">
+
+{stats?.overdueList?.map((t:any,i:number)=>(
+<div
+key={i}
+className="border rounded-xl p-4 shadow-sm bg-gray-50 flex flex-col gap-2"
+>
+
+<div className="font-semibold text-gray-900">
+{t.title}
+</div>
+
+<div className="text-sm text-gray-600">
+<span className="font-medium">Assignees:</span>{" "}
+{t.assignees?.join(", ")}
+</div>
+
+<div className="text-sm text-red-600 font-bold">
+{t.daysLate} days late
+</div>
+
+</div>
+))}
+
+</div>
+
+
+{/* DESKTOP TABLE */}
+
+<div className="hidden md:block overflow-x-auto">
 
 <table className="w-full text-sm">
 
@@ -276,6 +309,7 @@ Overdue Tasks
 <tbody>
 
 {stats?.overdueList?.map((t:any,i:number)=>(
+
 <tr key={i} className="border-b">
 
 <td className="py-2 font-medium">
@@ -291,11 +325,14 @@ Overdue Tasks
 </td>
 
 </tr>
+
 ))}
 
 </tbody>
 
 </table>
+
+</div>
 
 </div>
 
@@ -314,13 +351,13 @@ function KpiCard({
 
  return (
 
-<div className="bg-white border shadow rounded-xl p-5 flex flex-col gap-2">
+<div className="bg-white border shadow rounded-xl p-4 flex flex-col gap-1">
 
-<div className="text-sm text-gray-500">
+<div className="text-xs md:text-sm text-gray-500">
 {title}
 </div>
 
-<div className={`text-3xl font-bold ${color}`}>
+<div className={`text-2xl md:text-3xl font-bold ${color}`}>
 {value}
 </div>
 

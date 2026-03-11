@@ -49,6 +49,21 @@ const STATUS_FLOW: Record<Status, Status[]> = {
   CANCELLED: ["TODO", "IN_PROGRESS"]
 
 };
+
+const STATUS_LABELS: Record<Status, string> = {
+  TODO: "Görülməli",
+  IN_PROGRESS: "İcra olunur",
+  DONE: "Tamamlandı",
+  CANCELLED: "Ləğv edildi",
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  LOW: "Aşağı",
+  MEDIUM: "Orta",
+  HIGH: "Yüksək",
+  URGENT: "Təcili",
+};
+
 type Status = (typeof STATUSES)[number];
 
 type TaskFile = {
@@ -164,14 +179,21 @@ function formatDMY(date?: string | null, withTime = false) {
 
 function PriorityPill({ p }: { p: string }) {
   const base = "inline-flex items-center px-2 py-0.5 rounded-full text-xs border";
+
   const map: Record<string, string> = {
     LOW: "bg-gray-50 text-gray-700 border-gray-200",
     MEDIUM: "bg-blue-50 text-blue-700 border-blue-200",
     HIGH: "bg-amber-50 text-amber-800 border-amber-200",
     URGENT: "bg-red-50 text-red-700 border-red-200",
   };
+
   const cls = map[p] ?? "bg-slate-50 text-slate-700 border-slate-200";
-  return <span className={`${base} ${cls}`}>{p}</span>;
+
+  return (
+    <span className={`${base} ${cls}`}>
+      {PRIORITY_LABELS[p] ?? p}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -189,7 +211,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className={`${base} ${cls}`}>
-      {status.replace("_", " ")}
+      {STATUS_LABELS[status as Status] ?? status}
     </span>
   );
 }
@@ -210,12 +232,12 @@ function UserBadge({
   const ref = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
-  message.config({
-    top: 80,
-    duration: 3,
-    maxCount: 3,
-  });
-}, []);
+    message.config({
+      top: 80,
+      duration: 3,
+      maxCount: 3,
+    });
+  }, []);
 
   useEffect(() => {
     if (!hovered || !ref.current) return;
@@ -330,23 +352,24 @@ export default function TasksPage() {
   const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
   const [users, setUsers] = useState<UserInfo[]>([]);
 
+
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   // COMMENTS STATE
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
 
-const editor = useEditor({
-  extensions: [
-    StarterKit,
-    Placeholder.configure({
-      placeholder: "Şərh yaz..."
-    })
-  ],
-  immediatelyRender: false,
-  onUpdate({ editor }) {
-    setNewComment(editor.getHTML());
-  },
-});
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: "Şərh yaz..."
+      })
+    ],
+    immediatelyRender: false,
+    onUpdate({ editor }) {
+      setNewComment(editor.getHTML());
+    },
+  });
 
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -377,6 +400,15 @@ const editor = useEditor({
 
   const [startRange, setStartRange] = useState<[string | null, string | null]>([null, null]);
   const [dueRange, setDueRange] = useState<[string | null, string | null]>([null, null]);
+
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 1024)
+    check()
+    window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
 
   const filteredTasksBy = useMemo(() => {
     const out: TasksByStatus = {
@@ -782,40 +814,40 @@ const editor = useEditor({
   }, [user?.id]);
 
   useEffect(() => {
-  if (!user?.id) return;
+    if (!user?.id) return;
 
-  const channel = supabase
-    .channel("comments-realtime")
-    .on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "task_comments" },
-      (payload) => {
+    const channel = supabase
+      .channel("comments-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "task_comments" },
+        (payload) => {
 
-        const taskId = payload.new.task_id;
+          const taskId = payload.new.task_id;
 
-        setTasksBy(prev => {
+          setTasksBy(prev => {
 
-          const next = { ...prev };
+            const next = { ...prev };
 
-          for (const st of STATUSES) {
-            next[st] = next[st].map(t =>
-              t.id === taskId
-                ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
-                : t
-            );
-          }
+            for (const st of STATUSES) {
+              next[st] = next[st].map(t =>
+                t.id === taskId
+                  ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
+                  : t
+              );
+            }
 
-          return next;
-        });
-      }
-    )
-    .subscribe();
+            return next;
+          });
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel); // ✅ düzəldi
-  };
+    return () => {
+      supabase.removeChannel(channel); // ✅ düzəldi
+    };
 
-}, [user?.id]);
+  }, [user?.id]);
 
   // LOAD COMMENTS WHEN VIEW DRAWER OPENS
   useEffect(() => {
@@ -892,111 +924,114 @@ const editor = useEditor({
       type?: string;
     }[] = [];
 
-   try {
+    try {
 
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+      const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
-  // 🔥 FILE UPLOAD
-  for (const file of commentFiles) {
+      // 🔥 FILE UPLOAD
+      for (const file of commentFiles) {
 
-    // 🔴 SIZE CHECK (UPLOADDAN ƏVVƏL)
-    if (file.size > MAX_FILE_SIZE) {
-      message.error(`"${file.name}" faylı 20MB-dan böyükdür`);
-      return;
-    }
+        // 🔴 SIZE CHECK (UPLOADDAN ƏVVƏL)
+        if (file.size > MAX_FILE_SIZE) {
+          message.error(`"${file.name}" faylı 20MB-dan böyükdür`);
+          return;
+        }
 
-    const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
+        const fileName = `${viewTask.id}/${Date.now()}-${file.name}`;
 
-    const { error } = await supabase.storage
-      .from("task-comment-files")
-      .upload(fileName, file, {
-        cacheControl: "3600",
-        upsert: false,
+        const { error } = await supabase.storage
+          .from("task-comment-files")
+          .upload(fileName, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (error) {
+          console.error("Upload error:", error);
+          message.error(`${file.name} yüklənmədi`);
+          continue;
+        }
+
+        uploaded.push({
+          name: file.name,
+          path: fileName,
+          size: file.size,
+          type: file.type,
+        });
+      }
+
+      // 🔥 COMMENT INSERT
+      const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          comment: newComment.trim(),
+          files: uploaded,
+        }),
       });
 
-    if (error) {
-      console.error("Upload error:", error);
-      message.error(`${file.name} yüklənmədi`);
-      continue;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+
+        const errorMessage =
+          data?.error || "Şərh göndərilə bilmədi";
+
+        message.error(errorMessage);
+
+        return;
+      }
+
+      const data = await res.json();
+
+      // 🔥 UI UPDATE
+      setComments((prev) => [
+        {
+          ...data.comment,
+          files: Array.isArray(data.comment.files)
+            ? data.comment.files
+            : [],
+        },
+        ...prev,
+      ]);
+
+      // 🔥 COMMENT COUNT INCREMENT
+      setTasksBy((prev) => {
+        const next = { ...prev };
+
+        for (const st of STATUSES) {
+          next[st] = next[st].map((t) =>
+            t.id === viewTask.id
+              ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
+              : t
+          );
+        }
+
+        return next;
+      });
+
+      // 🔥 RESET
+      setNewComment("");
+      setCommentFiles([]);
+      editor?.commands.clearContent();
+
+      message.success("Şərh əlavə edildi");
+
+    } catch (err) {
+      console.error("Add comment failed:", err);
+      message.error("Xəta baş verdi");
     }
-
-    uploaded.push({
-      name: file.name,
-      path: fileName,
-      size: file.size,
-      type: file.type,
-    });
-  }
-
-  // 🔥 COMMENT INSERT
-  const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      comment: newComment.trim(),
-      files: uploaded,
-    }),
-  });
-
- if (!res.ok) {
-  const data = await res.json().catch(() => null);
-
-  const errorMessage =
-    data?.error || "Şərh göndərilə bilmədi";
-
-  message.error(errorMessage);
-
-  return;
-}
-
-  const data = await res.json();
-
-  // 🔥 UI UPDATE
-  setComments((prev) => [
-    {
-      ...data.comment,
-      files: Array.isArray(data.comment.files)
-        ? data.comment.files
-        : [],
-    },
-    ...prev,
-  ]);
-
-  // 🔥 COMMENT COUNT INCREMENT
-  setTasksBy((prev) => {
-    const next = { ...prev };
-
-    for (const st of STATUSES) {
-      next[st] = next[st].map((t) =>
-        t.id === viewTask.id
-          ? { ...t, comment_count: (t.comment_count ?? 0) + 1 }
-          : t
-      );
-    }
-
-    return next;
-  });
-
-  // 🔥 RESET
-  setNewComment("");
-  setCommentFiles([]);
-  editor?.commands.clearContent();
-
-  message.success("Şərh əlavə edildi");
-
-} catch (err) {
-  console.error("Add comment failed:", err);
-  message.error("Xəta baş verdi");
-}
   };
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
+
+    if (isMobile) return // 📱 mobil drag disable
+
     const id = String(e.active.id);
 
     const found = findTask(tasksBy, id);
@@ -1011,7 +1046,7 @@ const editor = useEditor({
 
     setActiveTaskId(id);
     setIsDraggingNow(true);
-  }, [tasksBy]);
+  }, [tasksBy, user, isMobile])
 
   const prevSnapshotRef = useRef<TasksByStatus | null>(null);
 
@@ -1126,7 +1161,7 @@ const editor = useEditor({
   return (
     <div className="min-h-screen bg-slate-50 px-4 sm:px-6 lg:px-10 pt-0 pb-6 lg:pb-10 space-y-8 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h1 className="text-3xl font-bold">🔥 Tapşırıqlar lövhəsi</h1>
+        <h1 className="text-3xl font-bold">🔥 Tapşırıqlar</h1>
 
         <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
           <button
@@ -1136,7 +1171,7 @@ const editor = useEditor({
               : "text-gray-600"
               }`}
           >
-            Board
+            Lövhə
           </button>
 
           <button
@@ -1146,7 +1181,7 @@ const editor = useEditor({
               : "text-gray-600"
               }`}
           >
-            List
+            Siyahı
           </button>
 
           <button
@@ -1156,7 +1191,7 @@ const editor = useEditor({
               : "text-gray-600"
               }`}
           >
-            Calendar
+            Kalendar
           </button>
         </div>
 
@@ -1197,7 +1232,7 @@ const editor = useEditor({
               }}
               className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
             >
-              Export
+              Eksport
             </button>
           )}
           {can("tasks.print.list") && (
@@ -1205,7 +1240,7 @@ const editor = useEditor({
               onClick={() => window.print()}
               className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
             >
-              Print
+              Çap
             </button>
           )}
         </div>
@@ -1221,11 +1256,28 @@ const editor = useEditor({
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-6 overflow-x-auto pb-6 pt-2">
+          <div
+            className="
+    flex
+    flex-col
+    md:flex-col
+    lg:flex-row
+    gap-6
+    lg:overflow-x-auto
+    pb-6
+    pt-2
+  "
+          >
             {memoizedColumns.map((col) => (
               <div
                 key={col.id}
-                className="min-w-[340px] max-w-[340px] flex-shrink-0"
+                className="
+    w-full
+    md:w-full
+    lg:min-w-[340px]
+    lg:max-w-[340px]
+    flex-shrink-0
+  "
               >
                 <Column
                   id={col.id}
@@ -1283,7 +1335,7 @@ const editor = useEditor({
               }}
               options={STATUSES.map((s) => ({
                 value: s,
-                label: s.replace("_", " "),
+                label: STATUS_LABELS[s],
               }))}
             />
 
@@ -1296,15 +1348,15 @@ const editor = useEditor({
                 setPage(1);
               }}
               options={[
-                { value: "LOW", label: "LOW" },
-                { value: "MEDIUM", label: "MEDIUM" },
-                { value: "HIGH", label: "HIGH" },
-                { value: "URGENT", label: "URGENT" },
+                { value: "LOW", label: "Aşağı" },
+                { value: "MEDIUM", label: "Orta" },
+                { value: "HIGH", label: "Yüksək" },
+                { value: "URGENT", label: "Təcili" },
               ]}
             />
             <MultiSelectDropdown
-              label="Assigned"
-              placeholder="User seç"
+              label="Təyin edilmiş"
+              placeholder="İşçi seç"
               value={assignedFilter}
               onChange={(vals) => {
                 setAssignedFilter(vals);
@@ -1318,9 +1370,10 @@ const editor = useEditor({
 
             {/* START RANGE */}
             <div className="space-y-1">
-              <div className="text-xs font-medium text-gray-600">Start Range</div>
+              <div className="text-xs font-medium text-gray-600">Başlama tarixi aralığı</div>
               <RangePicker
                 format="DD/MM/YYYY"
+                placeholder={["Başlama", "Bitmə"]}
                 value={[
                   startRange[0] ? dayjs(startRange[0]) : null,
                   startRange[1] ? dayjs(startRange[1]) : null,
@@ -1338,9 +1391,10 @@ const editor = useEditor({
 
             {/* DUE RANGE */}
             <div className="space-y-1">
-              <div className="text-xs font-medium text-gray-600">Due Range</div>
+              <div className="text-xs font-medium text-gray-600">Bitmə tarixi aralığı</div>
               <RangePicker
                 format="DD/MM/YYYY"
+                placeholder={["Başlama", "Bitmə"]}
                 value={[
                   dueRange[0] ? dayjs(dueRange[0]) : null,
                   dueRange[1] ? dayjs(dueRange[1]) : null,
@@ -1396,27 +1450,27 @@ const editor = useEditor({
                 <thead className="bg-gray-100">
                   <tr>
                     <th onClick={() => toggleSort("title")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Title {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      Başlıq {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                     <th onClick={() => toggleSort("status")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
                       Status {sortBy === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                     <th onClick={() => toggleSort("priority")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Priority {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      Prioritet {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                     <th onClick={() => toggleSort("start_date")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Start
+                      Başlama vaxtı
                     </th>
                     <th onClick={() => toggleSort("due_date")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Due
+                      Bitmə vaxtı
                     </th>
                     <th onClick={() => toggleSort("assigned_to")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Assigned
+                      Təyin edilmiş işçi
                     </th>
                     <th className="p-3 text-left">
-                      Files
+                      Fayllar
                     </th>
-                    <th className="p-3 text-right">Actions</th>
+                    <th className="p-3 text-right">Əməliyyatlar</th>
                   </tr>
                 </thead>
 
@@ -1431,7 +1485,9 @@ const editor = useEditor({
                           </div>
                         )}
                       </td>
-                      <td className="p-3">{t.status}</td>
+                      <td className="p-3">
+                        <StatusBadge status={String(t.status)} />
+                      </td>
                       <td className="p-3"><PriorityPill p={String(t.priority)} /></td>
                       <td className="p-3">{formatDMY(t.start_date)}</td>
                       <td className="p-3">{formatDMY(t.due_date)}</td>
@@ -1529,7 +1585,7 @@ const editor = useEditor({
                             onClick={() => setSelectedTask(t)}
                             className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
                           >
-                            Edit
+                            Düzəliş et
                           </button>
                         )}
                         {can("tasks.delete.list") && (
@@ -1573,7 +1629,7 @@ const editor = useEditor({
                   {paginatedTasks.length === 0 && (
                     <tr>
                       <td colSpan={8} className="p-6 text-center text-gray-500">
-                        No tasks found.
+                        Tapşırıq tapılmadı.
                       </td>
                     </tr>
                   )}
@@ -1697,7 +1753,7 @@ const editor = useEditor({
                 className="border px-4 py-2 rounded-xl w-full sm:w-auto"
                 disabled={page <= 1}
               >
-                Prev
+                Əvvəlki
               </button>
 
               <button
@@ -1705,7 +1761,7 @@ const editor = useEditor({
                 className="border px-4 py-2 rounded-xl w-full sm:w-auto"
                 disabled={page >= totalPages}
               >
-                Next
+                Növbəti
               </button>
             </div>
 
@@ -1894,7 +1950,7 @@ const editor = useEditor({
                       fontSize: 12,
                     }}
                   >
-                    Export
+                    Eksport
                   </button>
                 )}
 
@@ -1910,7 +1966,7 @@ const editor = useEditor({
                       fontSize: 12,
                     }}
                   >
-                    Print
+                    Çap et
                   </button>
                 )}
                 {can("tasks.edit.drawer") && (
@@ -1931,7 +1987,7 @@ const editor = useEditor({
                       color: "#4338ca",
                     }}
                   >
-                    Edit
+                    Düzəliş et
                   </button>
                 )}
                 {can("tasks.delete.drawer") && (
@@ -1973,7 +2029,7 @@ const editor = useEditor({
                       color: "#b91c1c",
                     }}
                   >
-                    Delete
+                    Sil
                   </button>
                 )}
 
@@ -2034,8 +2090,8 @@ const editor = useEditor({
                     }}
                     className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-indigo-700"
                   >
-                    {viewTask.status === "TODO" && "Start Task"}
-                    {viewTask.status === "IN_PROGRESS" && "Complete Task"}
+                    {viewTask.status === "TODO" && "Tapşırığı başlat"}
+                    {viewTask.status === "IN_PROGRESS" && "Tapşırığı tamamla"}
                   </button>
                 )}
 
@@ -2051,7 +2107,7 @@ const editor = useEditor({
                     }}
                     className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-300"
                   >
-                    Reopen Task
+                    Yenidən tapşırığı aç
                   </button>
                 )}
 
@@ -2283,14 +2339,14 @@ const editor = useEditor({
 
                   {/* ADD COMMENT */}
                   {/* ADD COMMENT */}
-                 <div className="mt-5 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="mt-5 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
-  {/* TOOLBAR */}
-  <div className="flex items-center gap-2 px-3 py-2 border-b bg-gray-50">
+                    {/* TOOLBAR */}
+                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-gray-50">
 
-    <button
-      onClick={() => editor?.chain().focus().toggleBold().run()}
-      className="
+                      <button
+                        onClick={() => editor?.chain().focus().toggleBold().run()}
+                        className="
         px-2.5 py-1
         text-sm
         rounded-md
@@ -2298,13 +2354,13 @@ const editor = useEditor({
         transition
         font-bold
       "
-    >
-      B
-    </button>
+                      >
+                        B
+                      </button>
 
-    <button
-      onClick={() => editor?.chain().focus().toggleItalic().run()}
-      className="
+                      <button
+                        onClick={() => editor?.chain().focus().toggleItalic().run()}
+                        className="
         px-2.5 py-1
         text-sm
         rounded-md
@@ -2312,13 +2368,13 @@ const editor = useEditor({
         transition
         italic
       "
-    >
-      I
-    </button>
+                      >
+                        I
+                      </button>
 
-    <div className="flex-1" />
+                      <div className="flex-1" />
 
-    <label className="
+                      <label className="
       flex items-center gap-1
       px-3 py-1
       text-sm
@@ -2327,38 +2383,38 @@ const editor = useEditor({
       cursor-pointer
       transition
     ">
-      📎 Fayl
-      <input
-  type="file"
-  hidden
-  multiple
-  onChange={(e) => {
+                        📎 Fayl
+                        <input
+                          type="file"
+                          hidden
+                          multiple
+                          onChange={(e) => {
 
-    const files = Array.from(e.target.files || []);
-    const MAX = 20 * 1024 * 1024;
+                            const files = Array.from(e.target.files || []);
+                            const MAX = 20 * 1024 * 1024;
 
-    const valid: File[] = [];
+                            const valid: File[] = [];
 
-    for (const file of files) {
+                            for (const file of files) {
 
-      if (file.size > MAX) {
-        message.error(`"${file.name}" 20MB-dan böyükdür`);
-        continue;
-      }
+                              if (file.size > MAX) {
+                                message.error(`"${file.name}" 20MB-dan böyükdür`);
+                                continue;
+                              }
 
-      valid.push(file);
-    }
+                              valid.push(file);
+                            }
 
-    setCommentFiles(valid);
+                            setCommentFiles(valid);
 
-  }}
-/>
-    </label>
-  </div>
+                          }}
+                        />
+                      </label>
+                    </div>
 
-  {/* EDITOR */}
-  <div
-    className="
+                    {/* EDITOR */}
+                    <div
+                      className="
       px-4 py-3
       min-h-[120px]
       max-h-[260px]
@@ -2367,18 +2423,18 @@ const editor = useEditor({
       focus-within:ring-indigo-500
       transition      
     "
-  >
-    {editor && <EditorContent editor={editor} />}
-  </div>
+                    >
+                      {editor && <EditorContent editor={editor} />}
+                    </div>
 
-  {/* FILE PREVIEW */}
-  {commentFiles.length > 0 && (
-    <div className="px-4 pb-3 space-y-2 border-t bg-gray-50">
+                    {/* FILE PREVIEW */}
+                    {commentFiles.length > 0 && (
+                      <div className="px-4 pb-3 space-y-2 border-t bg-gray-50">
 
-      {commentFiles.map((file, i) => (
-        <div
-          key={i}
-          className="
+                        {commentFiles.map((file, i) => (
+                          <div
+                            key={i}
+                            className="
             flex
             items-center
             justify-between
@@ -2390,46 +2446,46 @@ const editor = useEditor({
             text-sm
             shadow-sm
           "
-        >
-          <div className="flex items-center gap-2">
-            <span>📎</span>
-            <span className="font-medium text-gray-700">
-              {file.name}
-            </span>
-          </div>
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>📎</span>
+                              <span className="font-medium text-gray-700">
+                                {file.name}
+                              </span>
+                            </div>
 
-          <button
-            onClick={() =>
-              setCommentFiles((prev) =>
-                prev.filter((_, index) => index !== i)
-              )
-            }
-            className="
+                            <button
+                              onClick={() =>
+                                setCommentFiles((prev) =>
+                                  prev.filter((_, index) => index !== i)
+                                )
+                              }
+                              className="
               text-red-500
               hover:text-red-700
               font-semibold
             "
-          >
-            ✖
-          </button>
-        </div>
-      ))}
+                            >
+                              ✖
+                            </button>
+                          </div>
+                        ))}
 
-    </div>
-  )}
+                      </div>
+                    )}
 
-  {/* SUBMIT */}
-  <div className="px-4 pb-4 pt-2 flex justify-end border-t bg-white">
+                    {/* SUBMIT */}
+                    <div className="px-4 pb-4 pt-2 flex justify-end border-t bg-white">
 
-    <button
-      onClick={async () => {
-        if (!newComment.trim() && commentFiles.length === 0) return;
+                      <button
+                        onClick={async () => {
+                          if (!newComment.trim() && commentFiles.length === 0) return;
 
-        await handleAddComment();
+                          await handleAddComment();
 
-        editor?.commands.clearContent();
-      }}
-      className="
+                          editor?.commands.clearContent();
+                        }}
+                        className="
         bg-indigo-600
         hover:bg-indigo-700
         text-white
@@ -2440,13 +2496,13 @@ const editor = useEditor({
         shadow-sm
         transition
       "
-    >
-      Göndər
-    </button>
+                      >
+                        Göndər
+                      </button>
 
-  </div>
+                    </div>
 
-</div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2592,7 +2648,7 @@ function MultiSelectDropdown({
               onClick={() => setTemp([])}
               className="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-sm"
             >
-              Clear
+              Təmizlə
             </button>
 
             <button
@@ -2602,7 +2658,7 @@ function MultiSelectDropdown({
               }}
               className="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-sm"
             >
-              Done
+              Tamamla
             </button>
           </div>
         </div>
@@ -2671,7 +2727,7 @@ function Column({
         shadow-lg
         border border-slate-200
         flex flex-col
-        max-h-[75vh]
+        max-h-none lg:max-h-[75vh]
         transition
         ${isOver ? "ring-2 ring-indigo-400" : ""}
       `}
@@ -2679,7 +2735,7 @@ function Column({
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-gray-800 tracking-wide flex items-center gap-2">
-          {title.replace("_", " ")}
+          {STATUS_LABELS[id]}
 
           {isCancelledLocked && (
             <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
@@ -2720,6 +2776,7 @@ function Column({
               // loadTasks={loadTasks}
               moveTask={moveTask}   // 👈 əlavə et
               users={users}
+              isMobile={window.innerWidth < 1024}
             />
           ))}
         </div>
@@ -2754,7 +2811,8 @@ const TaskCard = React.memo(function TaskCard({
   userRole,
   updateTask,
   moveTask,
-  users
+  users,
+  isMobile
 }: {
   task: Task;
   onSelect: (t: Task) => void;
@@ -2764,6 +2822,7 @@ const TaskCard = React.memo(function TaskCard({
   users: UserInfo[];
   updateTask: (id: string, updates: any) => Promise<void>;
   moveTask: (taskId: string, nextStatus: Status) => void;
+  isMobile: boolean;
 }) {
   const isDone =
     (task.status === "DONE" || task.status === "CANCELLED") &&
@@ -2811,7 +2870,7 @@ const TaskCard = React.memo(function TaskCard({
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: (!can("tasks.edit.list")) || isDone,
+    disabled: (!can("tasks.edit.list")) || isDone || window.innerWidth < 1024,
   });
 
   const isAssignedUser =
@@ -2841,7 +2900,7 @@ const TaskCard = React.memo(function TaskCard({
         opacity: isDragging ? 0.6 : isDone ? 0.7 : 1,
       }}
       {...attributes}
-      {...(!isDone ? listeners : {})}
+      {...(!isDone && window.innerWidth >= 1024 ? listeners : {})}
       className={`
       ${bgColor}
       p-4
@@ -2852,10 +2911,11 @@ const TaskCard = React.memo(function TaskCard({
       border
       select-none
       relative
-      ${isDone
+     ${isDone
           ? "cursor-default opacity-70"
-          : "hover:shadow-md cursor-grab active:cursor-grabbing"
-        }
+          : isMobile
+            ? "cursor-pointer"
+            : "hover:shadow-md cursor-grab active:cursor-grabbing"}
     `}
       onClick={(e) => {
         e.stopPropagation();
@@ -2925,8 +2985,8 @@ const TaskCard = React.memo(function TaskCard({
             }}
             className="mt-3 w-full bg-indigo-600 text-white py-1.5 rounded-lg text-xs hover:bg-indigo-700"
           >
-            {task.status === "TODO" && "Start Task"}
-            {task.status === "IN_PROGRESS" && "Complete Task"}
+            {task.status === "TODO" && "Tapşırığı başlat"}
+            {task.status === "IN_PROGRESS" && "Tapşırığı tamamla"}
           </button>
         )}
         {task.status === "DONE" && isCreator && (
@@ -2939,7 +2999,7 @@ const TaskCard = React.memo(function TaskCard({
             }}
             className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
           >
-            Reopen Task
+            Tapşırığı yenidən açın
           </button>
         )}
 
@@ -2953,7 +3013,7 @@ const TaskCard = React.memo(function TaskCard({
             }}
             className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
           >
-            Reopen Task
+            Tapşırığı yenidən açın
           </button>
         )}
 
@@ -3105,10 +3165,10 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
                   setForm((p) => ({ ...p, priority: e.target.value as any }))
                 }
               >
-                <option value="LOW">LOW</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="HIGH">HIGH</option>
-                <option value="URGENT">URGENT</option>
+                <option value="LOW">Aşağı</option>
+                <option value="MEDIUM">Orta</option>
+                <option value="HIGH">Yüksək</option>
+                <option value="URGENT">Təcili</option>
               </select>
             </div>
 

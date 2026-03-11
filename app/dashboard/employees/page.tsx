@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
+import DebugErrorBoundary from "@/app/components/DebugErrorBoundary";
+
 
 type GuideRelation = {
   guide_id: string;
@@ -84,7 +86,7 @@ function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
-export default function EmployeesAdminPage() {
+function EmployeesAdminPageInner() {
   const [items, setItems] = useState<Employee[]>([]);
   const [meta, setMeta] = useState<{
     companies: Option[];
@@ -126,64 +128,89 @@ export default function EmployeesAdminPage() {
     guide_ids: [] as string[],
   });
 
+
+
   function showToast(type: ToastType, text: string) {
     setToast({ type, text });
     setTimeout(() => setToast(null), 2500);
   }
   // ---------------- LOAD ----------------
-  const load = async () => {
+const load = async () => {
+  try {
     setLoading(true);
-    setToast(null);
 
-   try {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
 
-  if (!session?.access_token) {
-    throw new Error("Session tapılmadı");
+    if (!token) {
+      console.warn("Token yoxdur");
+      setLoading(false);
+      return;
+    }
+
+    const [empRes, metaRes] = await Promise.all([
+      fetch("/api/admin/employees", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetch("/api/employees/meta", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    ]);
+
+    const empData = await empRes.json();
+    const metaData = await metaRes.json();
+
+    setItems(empData.employees || []);
+
+    setMeta({
+      companies: metaData.companies ?? [],
+      departments: metaData.departments ?? [],
+      positions: metaData.positions ?? [],
+      roles: metaData.roles ?? [],
+      guides: metaData.guides ?? [],
+    });
+
+  } catch (err) {
+    console.error("LOAD ERROR:", err);
+  } finally {
+    setLoading(false);
   }
+};
 
-  // EMPLOYEES
-  const res = await fetch("/api/admin/employees", {
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
+useEffect(() => {
+  let mounted = true;
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || "Yükləmə xətası");
+  const init = async () => {
+    let session = null;
 
-  setItems(data.employees || []);
+    for (let i = 0; i < 10; i++) {
+      const { data } = await supabase.auth.getSession();
+      session = data?.session;
 
-  // META
-  const metaRes = await fetch("/api/employees/meta", {
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
+      if (session) break;
 
-  const metaData = await metaRes.json();
+      await new Promise((r) => setTimeout(r, 200));
+    }
 
-  setMeta({
-    companies: metaData.companies || [],
-    departments: metaData.departments || [],
-    positions: metaData.positions || [],
-    roles: metaData.roles || [],
-    guides: metaData.guides || [],
-  });
-} catch (e: any) {
-  showToast("err", e?.message || "Server xətası");
-} finally {
-  setLoading(false);
-}
+    if (!mounted) return;
+
+    if (!session) {
+      console.warn("Session yoxdur");
+      setLoading(false);
+      return;
+    }
+
+    await load();
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  init();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
 
   // Esc closes modal
   useEffect(() => {
@@ -314,6 +341,24 @@ export default function EmployeesAdminPage() {
     if (p !== page) setPage(p);
   }, [page, totalPages]);
 
+  useEffect(() => {
+  const onError = (e: any) => {
+    console.error("GLOBAL ERROR:", e.error || e.message);
+  };
+
+  const onReject = (e: any) => {
+    console.error("PROMISE ERROR:", e.reason);
+  };
+
+  window.addEventListener("error", onError);
+  window.addEventListener("unhandledrejection", onReject);
+
+  return () => {
+    window.removeEventListener("error", onError);
+    window.removeEventListener("unhandledrejection", onReject);
+  };
+}, []);
+
   const paginatedEmployees = useMemo(() => {
     const start = (safePage - 1) * pageSize;
     return filteredEmployees.slice(start, start + pageSize);
@@ -393,7 +438,7 @@ export default function EmployeesAdminPage() {
 
   // ---------------- UI ----------------
   return (
-    <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 py-6 lg:max-w-7xl lg:mx-auto">
+    <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 py-6 max-w-7xl mx-auto">
       {/* Toast */}
       {toast && (
         <div
@@ -409,15 +454,13 @@ export default function EmployeesAdminPage() {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border p-6 md:p-8">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 flex-wrap">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-black text-slate-900">👥 İşçilər</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Axtarış, filter, sıralama və səhifələmə ilə idarə et.
-            </p>
+           
           </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto flex-wrap">
             <div className="text-xs font-extrabold text-slate-500">
               Göstərilir:{" "}
               <span className="text-slate-900">
@@ -441,7 +484,7 @@ export default function EmployeesAdminPage() {
               ))}
             </select>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 className={cn(
                   "px-3 py-2 rounded-xl border font-extrabold text-sm bg-white",
@@ -475,7 +518,7 @@ export default function EmployeesAdminPage() {
             Axtarış & Filtrlər
           </div>
 
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
             {/* Search */}
             <Field label="Axtar">
               <input
@@ -553,7 +596,7 @@ export default function EmployeesAdminPage() {
                   setPage(1);
                 }}
               >
-                🧹 Clear
+                🧹 Təmizlə
               </button>
             </div>
           </div>
@@ -625,14 +668,14 @@ export default function EmployeesAdminPage() {
                           onClick={() => openEdit(e)}
                           className="px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-50"
                         >
-                          ✏️ Edit
+                          ✏️ Düzəliş et
                         </button>
                         <button
                           onClick={() => remove(e.id)}
                           className="px-3 py-2 rounded-xl font-black text-white bg-red-600 hover:bg-red-700"
                           disabled={busyId === e.id}
                         >
-                          {busyId === e.id ? "..." : "🗑️ Delete"}
+                          {busyId === e.id ? "..." : "🗑️ Sil"}
                         </button>
                       </div>
                     </td>
@@ -653,9 +696,9 @@ export default function EmployeesAdminPage() {
 
         )}
       </div>
-      <div className="md:hidden space-y-4 mt-4">
+      <div className="md:hidden grid gap-4 mt-4">
         {paginatedEmployees.map((e) => (
-          <div key={e.id} className="border rounded-2xl p-4 shadow-sm bg-white">
+          <div key={e.id} className="border rounded-2xl p-4 shadow-sm bg-white flex flex-col gap-2">
             <div className="font-bold text-lg">
               {e.ad} {e.soyad}
             </div>
@@ -691,14 +734,14 @@ export default function EmployeesAdminPage() {
                 onClick={() => openEdit(e)}
                 className="flex-1 py-2 rounded-xl border font-bold"
               >
-                Edit
+                Düzəliş et
               </button>
 
               <button
                 onClick={() => remove(e.id)}
                 className="flex-1 py-2 rounded-xl bg-red-600 text-white font-bold"
               >
-                Delete
+                Sil
               </button>
             </div>
           </div>
@@ -708,7 +751,7 @@ export default function EmployeesAdminPage() {
       {edit && (
         <ModalOverlay onClose={closeEdit}>
           <div
-            className="bg-white w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border p-5 md:p-6"
+            className="bg-white w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border p-4 md:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -716,9 +759,9 @@ export default function EmployeesAdminPage() {
                 <h2 className="text-lg md:text-xl font-black text-slate-900">
                   ✏️ İşçini düzəliş et
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">
+                {/* <p className="text-sm text-slate-500 mt-1">
                   Dəyişiklikləri edib “Yadda saxla” bas.
-                </p>
+                </p> */}
               </div>
 
               <button
@@ -731,9 +774,9 @@ export default function EmployeesAdminPage() {
 
             {/* Tabs */}
             <div className="mt-4 flex flex-wrap gap-2">
-              <TabBtn title="BASIC" active={editTab === "BASIC"} onClick={() => setEditTab("BASIC")} />
-              <TabBtn title="COMPANY" active={editTab === "COMPANY"} onClick={() => setEditTab("COMPANY")} />
-              <TabBtn title="GUIDES" active={editTab === "GUIDES"} onClick={() => setEditTab("GUIDES")} />
+              <TabBtn title="Əsas" active={editTab === "BASIC"} onClick={() => setEditTab("BASIC")} />
+              <TabBtn title="Şirkət" active={editTab === "COMPANY"} onClick={() => setEditTab("COMPANY")} />
+              <TabBtn title="Rəhbər" active={editTab === "GUIDES"} onClick={() => setEditTab("GUIDES")} />
             </div>
 
             {/* BASIC */}
@@ -948,6 +991,13 @@ function MultiSelectPortal({
   selectedValues: string[];
   onChange: (vals: string[]) => void;
 }) {
+
+    const [mounted, setMounted] = useState(false);
+
+useEffect(() => {
+  setMounted(true);
+}, []);
+
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [pos, setPos] = useState({ left: 0, top: 0, width: 360 });
@@ -1014,7 +1064,7 @@ function MultiSelectPortal({
         <span className="text-blue-600">{open ? "▲" : "▼"}</span>
       </div>
 
-      {open &&
+      {open && mounted &&
         typeof document !== "undefined" &&
         createPortal(
           <div
@@ -1067,14 +1117,14 @@ function MultiSelectPortal({
                 className="flex-1 px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-100"
                 onClick={() => onChange([])}
               >
-                Clear
+                Təmizlə
               </button>
               <button
                 type="button"
                 className="flex-1 px-3 py-2 rounded-xl font-black bg-blue-600 text-white hover:bg-blue-700"
                 onClick={close}
               >
-                Done
+                Tamamla
               </button>
             </div>
           </div>,
@@ -1219,14 +1269,14 @@ function GuideMultiDropdown({
                   className="flex-1 px-3 py-2 rounded-xl border font-black bg-white hover:bg-slate-100"
                   onClick={() => setSelectedIds([])}
                 >
-                  Clear
+                  Təmizlə
                 </button>
                 <button
                   type="button"
                   className="flex-1 px-3 py-2 rounded-xl font-black bg-blue-600 text-white hover:bg-blue-700"
                   onClick={() => setOpen(false)}
                 >
-                  Done
+                  Bitir
                 </button>
               </div>
             </div>,
@@ -1242,5 +1292,11 @@ function GuideMultiDropdown({
         )}
       </Field>
     </div>
+  );
+}export default function EmployeesAdminPage() {
+  return (
+    <DebugErrorBoundary>
+      <EmployeesAdminPageInner />
+    </DebugErrorBoundary>
   );
 }
