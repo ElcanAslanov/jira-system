@@ -2,7 +2,7 @@ name: Recurring Tasks Cron
 
 on:
   schedule:
-    - cron: "22 11 * * *"  
+    - cron: "33 11 * * *"   # 15:33 Baku
   workflow_dispatch:
 
 jobs:
