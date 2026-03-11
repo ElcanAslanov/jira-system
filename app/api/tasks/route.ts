@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { runRecurringEngine } from "@/lib/recurring-engine";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,6 +58,7 @@ async function getRequestUser(req: Request) {
 
 export async function GET(req: Request) {
   try {
+    
     const user = await getRequestUser(req);
 if (!user) {
   return NextResponse.json(

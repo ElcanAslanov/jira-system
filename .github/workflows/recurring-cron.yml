@@ -2,7 +2,7 @@ name: Recurring Tasks Cron
 
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    - cron: "22 11 * * *"  
   workflow_dispatch:
 
 jobs:
