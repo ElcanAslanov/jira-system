@@ -143,37 +143,53 @@ export default function NewRecurringPage() {
 
     /* ================= CREATE RULE ================= */
 
-    const createRule = async () => {
-        if (!title.trim()) return alert("Title tələb olunur");
-        if (!startDate || !endDate)
-            return alert("Start və End tarixi seçilməlidir");
-        if (startDate > endDate)
-            return alert("Start date end-dən böyük ola bilməz");
+   const createRule = async () => {
+    if (!title.trim()) return alert("Title tələb olunur");
+    if (!startDate || !endDate)
+        return alert("Start və End tarixi seçilməlidir");
+    if (startDate > endDate)
+        return alert("Start date end-dən böyük ola bilməz");
 
-        if (frequency === "WEEKLY" && weekDays.length === 0)
-            return alert("Həftəlik üçün ən azı 1 gün seçilməlidir");
+    if (frequency === "WEEKLY" && weekDays.length === 0)
+        return alert("Həftəlik üçün ən azı 1 gün seçilməlidir");
 
-        let uploadedFiles: any[] = [];
+    let uploadedFiles: any[] = [];
 
-        for (const file of files) {
-            const fileName = `${Date.now()}-${file.name}`;
+    for (const file of files) {
+        const fileName = `${Date.now()}-${file.name}`;
 
-            const { error } = await supabase.storage
-                .from("task-files")
-                .upload(fileName, file);
+        const { error } = await supabase.storage
+            .from("task-files")
+            .upload(fileName, file);
 
-            if (!error) {
-                uploadedFiles.push({
-                    name: file.name,
-                    path: fileName,
-                    size: file.size,
-                });
-            }
+        if (!error) {
+            uploadedFiles.push({
+                name: file.name,
+                path: fileName,
+                size: file.size,
+            });
         }
+    }
 
-        const { data: userData } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
 
-        const { error } = await supabase.from("recurring_rules").insert({
+    /* employee id tapırıq (tasks.created_by üçün lazımdır) */
+    const { data: employee, error: empError } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", userId)
+        .single();
+
+    if (empError || !employee) {
+        alert("Employee tapılmadı");
+        return;
+    }
+
+    /* recurring rule yaradırıq */
+    const { data: rule, error } = await supabase
+        .from("recurring_rules")
+        .insert({
             title: title.trim(),
             description,
             frequency,
@@ -186,16 +202,38 @@ export default function NewRecurringPage() {
             end_date: endDate,
             next_run_date: startDate,
             is_active: true,
-            created_by: userData.user?.id,
-        });
+            created_by: employee.id,
+        })
+        .select()
+        .single();
 
-        if (error) {
-            alert(error.message);
-            return;
+    if (error) {
+        alert(error.message);
+        return;
+    }
+
+    /* əgər start date bu gündürsə ilk taskı dərhal yaradırıq */
+    const today = dayjs().format("YYYY-MM-DD");
+
+    if (startDate === today) {
+        const { error: taskError } = await supabase
+            .from("tasks")
+            .insert({
+                title: title.trim(),
+                description,
+                priority,
+                due_date: startDate,
+                status: "TODO",
+                created_by: employee.id,
+            });
+
+        if (taskError) {
+            console.log("TASK ERROR:", taskError);
         }
+    }
 
-        router.push("/dashboard/recurring");
-    };
+    router.push("/dashboard/recurring");
+};
 
     if (loading || !user) return null;
 
