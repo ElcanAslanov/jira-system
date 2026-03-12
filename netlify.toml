@@ -8,7 +8,3 @@
 [functions]
   directory = "netlify/functions"
 
-[[scheduled]]
-  path = "/.netlify/functions/cron"
-  schedule = "0 0 * * *"
-  

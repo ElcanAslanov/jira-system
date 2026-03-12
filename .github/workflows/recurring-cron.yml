@@ -3,7 +3,7 @@ name: Recurring Tasks Cron
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/7 * * * *"
 
 jobs:
   run-cron:
