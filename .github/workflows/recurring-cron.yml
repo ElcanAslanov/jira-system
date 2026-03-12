@@ -3,7 +3,7 @@ name: Recurring Tasks Cron
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/7 * * * *"
+    - cron: "*/5 * * * *"
 
 jobs:
   run-cron:
@@ -13,5 +13,6 @@ jobs:
       - name: Call cron API
         run: |
           echo "Running recurring cron..."
+          echo "Scheduler test"
           curl -L "${{ secrets.CRON_URL }}" \
           -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
