@@ -21,6 +21,17 @@ function todayISO() {
   return formatter.format(new Date());
 }
 
+function dateISO(date: Date) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Baku",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  return formatter.format(date);
+}
+
 function extractAssignedIds(raw: any): string[] {
   if (!raw) return [];
 
@@ -117,9 +128,9 @@ export async function GET(request: NextRequest) {
 
       /* MISS RUN LOOP */
 
-      while (next.toISOString().split("T")[0] <= today) {
+      while (dateISO(next) <= today) {
 
-        const runDate = next.toISOString().split("T")[0];
+        const runDate = dateISO(next);
 
         /* WEEKLY CHECK */
 
@@ -237,7 +248,7 @@ export async function GET(request: NextRequest) {
       await supabase
         .from("recurring_rules")
         .update({
-          next_run_date: next.toISOString().split("T")[0],
+          next_run_date: dateISO(next),
         })
         .eq("id", rule.id);
 

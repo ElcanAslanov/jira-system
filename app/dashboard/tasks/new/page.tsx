@@ -8,6 +8,8 @@ import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import type { Dayjs } from "dayjs";
+import { useLang } from "@/context/LanguageContext"
+import { translations } from "@/lib/translations"
 
 dayjs.extend(customParseFormat);
 
@@ -20,6 +22,10 @@ type Employee = {
 };
 
 export default function CreateTaskPage() {
+
+
+  const { lang } = useLang()
+const t = translations[lang]
 
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const router = useRouter();
@@ -103,17 +109,17 @@ export default function CreateTaskPage() {
 
     for (const file of selectedFiles) {
       if (!allowedTypes.includes(file.type)) {
-        alert("Yalnız PDF, Excel, Word, JPG və PNG icazəlidir");
+       alert(t.fileTypeError)
         continue;
       }
 
       if (file.size > maxSize) {
-        alert(`${file.name} 20MB-dan böyükdür`);
+        alert(`${file.name} ${t.fileTooLarge}`)
         continue;
       }
 
       if (currentFiles.length >= maxFiles) {
-        alert("Maksimum 20 fayl əlavə edə bilərsiniz");
+        alert(t.maxFilesError);
         break;
       }
 
@@ -131,7 +137,7 @@ export default function CreateTaskPage() {
 
   const createTask = async () => {
     if (!title || assignedTo.length === 0) {
-      alert("Title və Assigned tələb olunur");
+      alert(t.taskValidationError);
       return;
     }
 
@@ -191,14 +197,14 @@ export default function CreateTaskPage() {
     <div className="h-full w-full p-6 overflow-y-auto bg-gray-100">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm p-8 space-y-6">
 
-        <h2 className="text-2xl font-bold">Yeni Tapşırıq</h2>
+        <h2 className="text-2xl font-bold">{t.newTask}</h2>
 
         {/* TITLE */}
         <div>
-          <label className="text-sm font-medium text-gray-600">Task adı</label>
+          <label className="text-sm font-medium text-gray-600">{t.taskName}</label>
           <input
             className="w-full mt-2 border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="Task başlığı..."
+            placeholder={t.taskTitlePlaceholder}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -206,7 +212,7 @@ export default function CreateTaskPage() {
 
         {/* DESCRIPTION */}
         <div>
-          <label className="text-sm font-medium text-gray-600">Təsvir</label>
+          <label className="text-sm font-medium text-gray-600">{t.description}</label>
           <textarea
             rows={4}
             className="w-full mt-2 border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none"
@@ -217,7 +223,7 @@ export default function CreateTaskPage() {
 
         {/* PRIORITY */}
         <div>
-          <label className="text-sm font-medium text-gray-600">Prioritet</label>
+          <label className="text-sm font-medium text-gray-600">{t.priority}</label>
           <div className="flex gap-3 mt-3 flex-wrap">
             {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
               <button
@@ -229,7 +235,7 @@ export default function CreateTaskPage() {
                     : "bg-gray-100 text-gray-600"
                   }`}
               >
-                {p}
+                {t[p.toLowerCase() as keyof typeof t]}
               </button>
             ))}
           </div>
@@ -240,7 +246,7 @@ export default function CreateTaskPage() {
           <DatePicker
             value={dateFrom ? dayjs(dateFrom, "YYYY-MM-DD") : null}
             format={DATE_FORMATS}
-            placeholder="Başlama tarixi"
+            placeholder={t.startDate}
             style={{ width: "100%", height: 48, borderRadius: 12 }}
             onChange={(value) => {
               setDateFrom(value ? value.format("YYYY-MM-DD") : "");
@@ -250,7 +256,7 @@ export default function CreateTaskPage() {
           <DatePicker
             value={dateTo ? dayjs(dateTo, "YYYY-MM-DD") : null}
             format={DATE_FORMATS}
-            placeholder="Bitmə tarixi"
+            placeholder={t.endDate}
             style={{ width: "100%", height: 48, borderRadius: 12 }}
             onChange={(value) => {
               setDateTo(value ? value.format("YYYY-MM-DD") : "");
@@ -261,7 +267,7 @@ export default function CreateTaskPage() {
         {/* MULTI ASSIGN */}
         <div ref={dropdownRef} className="relative">
           <label className="text-sm font-medium text-gray-600">
-            Təyin et
+           {t.assign}
           </label>
 
           <div
@@ -269,7 +275,7 @@ export default function CreateTaskPage() {
             className="mt-2 border p-3 rounded-xl cursor-pointer bg-white flex flex-wrap gap-2 min-h-[48px]"
           >
             {assignedTo.length === 0 && (
-              <span className="text-gray-400">İşçi seç</span>
+              <span className="text-gray-400">{t.selectEmployee}</span>
             )}
 
             {assignedTo.map((id) => {
@@ -322,14 +328,14 @@ export default function CreateTaskPage() {
     htmlFor="commentsEnabled"
     className="text-sm font-medium text-gray-700 cursor-pointer"
   >
-    Şərhlərə icazə ver
+    {t.enableComments}
   </label>
 </div>
 
         {/* FILE ATTACH */}
         <div>
           <label className="text-sm font-medium text-gray-600">
-            Fayl əlavə et (PDF, Excel, Word , Şəkil — max 20MB)
+           {t.attachFile}
           </label>
 
           <input
@@ -356,7 +362,7 @@ export default function CreateTaskPage() {
                       onClick={() => removeFile(index)}
                       className="text-red-500 text-xs"
                     >
-                      Sil
+                      {t.delete}
                     </button>
                   </div>
                 </div>
@@ -371,7 +377,7 @@ export default function CreateTaskPage() {
           disabled={creating}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-medium transition disabled:opacity-50"
         >
-          {creating ? "Yaradılır..." : "Tapşırığı yarat"}
+          {creating ? t.creating : t.createTask}
         </button>
       </div>
     </div>

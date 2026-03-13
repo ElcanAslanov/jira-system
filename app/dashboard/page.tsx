@@ -2,367 +2,371 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
+import { useLang } from "@/context/LanguageContext"
+import { translations } from "@/lib/translations"
 
 import {
- PieChart,
- Pie,
- Cell,
- Tooltip,
- ResponsiveContainer,
- BarChart,
- Bar,
- XAxis,
- YAxis,
- CartesianGrid
+    PieChart,
+    Pie,
+    Cell,
+    Tooltip,
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid
 } from "recharts"
 
 const supabase = createClient(
- process.env.NEXT_PUBLIC_SUPABASE_URL!,
- process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-const COLORS = ["#94a3b8","#3b82f6","#22c55e","#ef4444"]
+const COLORS = ["#94a3b8", "#3b82f6", "#22c55e", "#ef4444"]
 
-export default function DashboardPage(){
+export default function DashboardPage() {
 
- const [stats,setStats] = useState<any>(null)
- const [loading,setLoading] = useState(true)
- const [error,setError] = useState<string | null>(null)
+    const { lang } = useLang()
+    const t = translations[lang]
 
- useEffect(()=>{
+    const [stats, setStats] = useState<any>(null)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
- async function load(){
+    useEffect(() => {
 
- try{
+        async function load() {
 
- const { data } = await supabase.auth.getSession()
+            try {
 
- const token = data.session?.access_token
+                const { data } = await supabase.auth.getSession()
 
- const res = await fetch("/api/dashboard",{
-  headers:{
-   Authorization:`Bearer ${token}`
-  }
- })
+                const token = data.session?.access_token
 
- const json = await res.json()
+                const res = await fetch("/api/dashboard", {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                })
 
- if(!res.ok){
-  throw new Error(json?.error || "Dashboard error")
- }
+                const json = await res.json()
 
- setStats(json)
+                if (!res.ok) {
+                    throw new Error(json?.error || t.serverError)
+                }
 
- }catch(e:any){
+                setStats(json)
 
- console.error(e)
- setError(e.message)
+            } catch (e: any) {
 
- }finally{
- setLoading(false)
- }
+                console.error(e)
+                setError(e.message)
 
- }
+            } finally {
+                setLoading(false)
+            }
 
- load()
+        }
 
- },[])
+        load()
 
- if(loading){
-  return <div className="p-6">Loading dashboard...</div>
- }
+    }, [])
 
- if(error){
-  return <div className="p-6 text-red-600">{error}</div>
- }
+    if (loading) {
+        return <div className="p-6">{t.loading}</div>
+    }
 
- if(!stats){
-  return <div className="p-6">No data</div>
- }
+    if (error) {
+        return <div className="p-6 text-red-600">{error}</div>
+    }
 
- const statusData = [
-  { name:"TODO", value:stats?.todo ?? 0 },
-  { name:"IN_PROGRESS", value:stats?.progress ?? 0 },
-  { name:"DONE", value:stats?.done ?? 0 },
-  { name:"CANCELLED", value:stats?.cancelled ?? 0 }
- ]
+    if (!stats) {
+        return <div className="p-6">{t.notFound}</div>
+    }
 
- const priorityData = [
-  { name:"LOW", value:stats?.priorityStats?.LOW ?? 0 },
-  { name:"MEDIUM", value:stats?.priorityStats?.MEDIUM ?? 0 },
-  { name:"HIGH", value:stats?.priorityStats?.HIGH ?? 0 },
-  { name:"URGENT", value:stats?.priorityStats?.URGENT ?? 0 }
- ]
+  const statusData = [
+ { name: t.todo, value: stats?.todo ?? 0 },
+ { name: t.inProgress, value: stats?.progress ?? 0 },
+ { name: t.taskDone, value: stats?.done ?? 0 },
+ { name: t.cancelled, value: stats?.cancelled ?? 0 }
+]
+const priorityData = [
+ { name: t.low, value: stats?.priorityStats?.LOW ?? 0 },
+ { name: t.medium, value: stats?.priorityStats?.MEDIUM ?? 0 },
+ { name: t.high, value: stats?.priorityStats?.HIGH ?? 0 },
+ { name: t.urgent, value: stats?.priorityStats?.URGENT ?? 0 }
+]
 
- return (
+    return (
 
-<div className="p-4 md:p-6 lg:p-8 space-y-8 bg-gray-50 min-h-screen">
+        <div className="p-4 md:p-6 lg:p-8 space-y-8 bg-gray-50 min-h-screen">
 
-<h1 className="text-2xl md:text-3xl font-bold">
-Dashboard
-</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">
+                {t.dashboard}
+            </h1>
 
-{/* KPI */}
+            {/* KPI */}
 
-<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
 
-<KpiCard title="Assigned To Me" value={stats?.assignedToMe ?? 0} color="text-indigo-600"/>
-<KpiCard title="Created By Me" value={stats?.createdByMe ?? 0} color="text-purple-600"/>
-<KpiCard title="Todo" value={stats?.todo ?? 0} color="text-blue-600"/>
-<KpiCard title="In Progress" value={stats?.progress ?? 0} color="text-yellow-500"/>
-<KpiCard title="Done" value={stats?.done ?? 0} color="text-green-600"/>
-<KpiCard title="Cancelled" value={stats?.cancelled ?? 0} color="text-red-500"/>
-<KpiCard title="Overdue" value={stats?.overdue ?? 0} color="text-red-700"/>
+                <KpiCard title={t.assignedToMe} value={stats?.assignedToMe ?? 0} color="text-indigo-600" />
+                <KpiCard title={t.createdByMe} value={stats?.createdByMe ?? 0} color="text-purple-600" />
+                <KpiCard title={t.todo} value={stats?.todo ?? 0} color="text-blue-600" />
+                <KpiCard title={t.inProgress} value={stats?.progress ?? 0} color="text-yellow-500" />
+                <KpiCard title={t.taskDone} value={stats?.done ?? 0} color="text-green-600" />
+                <KpiCard title={t.cancelled} value={stats?.cancelled ?? 0} color="text-red-500" />
+                <KpiCard title={t.overdue} value={stats?.overdue ?? 0} color="text-red-700" />
 
-</div>
+            </div>
 
-{/* CHARTS */}
+            {/* CHARTS */}
 
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
+                <div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
-<h2 className="font-bold mb-4">
-Tasks by Status
-</h2>
+                    <h2 className="font-bold mb-4">
+                        {t.tasksByStatus}
+                    </h2>
 
-<ResponsiveContainer width="100%" height={260}>
+                    <ResponsiveContainer width="100%" height={260}>
 
-<PieChart>
+                        <PieChart>
 
-<Pie
-data={statusData}
-dataKey="value"
-nameKey="name"
-outerRadius={90}
->
+                            <Pie
+                                data={statusData}
+                                dataKey="value"
+                                nameKey="name"
+                                outerRadius={90}
+                            >
 
-{statusData.map((entry,index)=>(
-<Cell key={index} fill={COLORS[index]}/>
-))}
+                                {statusData.map((entry, index) => (
+                                    <Cell key={index} fill={COLORS[index]} />
+                                ))}
 
-</Pie>
+                            </Pie>
 
-<Tooltip/>
+                            <Tooltip />
 
-</PieChart>
+                        </PieChart>
 
-</ResponsiveContainer>
+                    </ResponsiveContainer>
 
-</div>
+                </div>
 
 
-<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
+                <div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
-<h2 className="font-bold mb-4">
-Tasks by Priority
-</h2>
+                    <h2 className="font-bold mb-4">
+                        {t.tasksByPriority}
+                    </h2>
 
-<ResponsiveContainer width="100%" height={260}>
+                    <ResponsiveContainer width="100%" height={260}>
 
-<BarChart data={priorityData}>
+                        <BarChart data={priorityData}>
 
-<CartesianGrid strokeDasharray="3 3"/>
+                            <CartesianGrid strokeDasharray="3 3" />
 
-<XAxis dataKey="name"/>
+                            <XAxis dataKey="name" />
 
-<YAxis/>
+                            <YAxis />
 
-<Tooltip/>
+                            <Tooltip />
 
-<Bar
-dataKey="value"
-fill="#6366f1"
-radius={[8,8,0,0]}
-/>
+                            <Bar
+                                dataKey="value"
+                                fill="#6366f1"
+                                radius={[8, 8, 0, 0]}
+                            />
 
-</BarChart>
+                        </BarChart>
 
-</ResponsiveContainer>
+                    </ResponsiveContainer>
 
-</div>
+                </div>
 
-</div>
+            </div>
 
 
-{/* ANALYTICS */}
+            {/* ANALYTICS */}
 
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
+                <div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
-<h2 className="font-bold mb-4">
-Most Overdue Employees
-</h2>
+                    <h2 className="font-bold mb-4">
+                        {t.mostOverdueEmployees}
+                    </h2>
 
-<ResponsiveContainer width="100%" height={260}>
+                    <ResponsiveContainer width="100%" height={260}>
 
-<BarChart data={stats?.overdueUsers ?? []}>
+                        <BarChart data={stats?.overdueUsers ?? []}>
 
-<CartesianGrid strokeDasharray="3 3"/>
+                            <CartesianGrid strokeDasharray="3 3" />
 
-<XAxis dataKey="name"/>
+                            <XAxis dataKey="name" />
 
-<YAxis/>
+                            <YAxis />
 
-<Tooltip/>
+                            <Tooltip />
 
-<Bar
-dataKey="count"
-fill="#ef4444"
-radius={[8,8,0,0]}
-/>
+                            <Bar
+                                dataKey="count"
+                                fill="#ef4444"
+                                radius={[8, 8, 0, 0]}
+                            />
 
-</BarChart>
+                        </BarChart>
 
-</ResponsiveContainer>
+                    </ResponsiveContainer>
 
-</div>
+                </div>
 
 
-<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
+                <div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
-<h2 className="font-bold mb-4">
-Employee Productivity
-</h2>
+                    <h2 className="font-bold mb-4">
+                        {t.employeeProductivity}
+                    </h2>
 
-<ResponsiveContainer width="100%" height={260}>
+                    <ResponsiveContainer width="100%" height={260}>
 
-<BarChart data={stats?.productivity ?? []}>
+                        <BarChart data={stats?.productivity ?? []}>
 
-<CartesianGrid strokeDasharray="3 3"/>
+                            <CartesianGrid strokeDasharray="3 3" />
 
-<XAxis dataKey="name"/>
+                            <XAxis dataKey="name" />
 
-<YAxis/>
+                            <YAxis />
 
-<Tooltip/>
+                            <Tooltip />
 
-<Bar
-dataKey="done"
-fill="#22c55e"
-radius={[8,8,0,0]}
-/>
+                            <Bar
+                                dataKey="done"
+                                fill="#22c55e"
+                                radius={[8, 8, 0, 0]}
+                            />
 
-</BarChart>
+                        </BarChart>
 
-</ResponsiveContainer>
+                    </ResponsiveContainer>
 
-</div>
+                </div>
 
-</div>
+            </div>
 
 
-{/* OVERDUE TASKS */}
+            {/* OVERDUE TASKS */}
 
-<div className="bg-white rounded-2xl shadow border p-4 md:p-6">
+            <div className="bg-white rounded-2xl shadow border p-4 md:p-6">
 
-<h2 className="font-bold mb-4 text-red-600">
-Overdue Tasks
-</h2>
+                <h2 className="font-bold mb-4 text-red-600">
+                    {t.overdueTasks}
+                </h2>
 
-{/* MOBILE CARDS */}
+                {/* MOBILE CARDS */}
 
-<div className="md:hidden space-y-3">
+                <div className="md:hidden space-y-3">
 
-{stats?.overdueList?.map((t:any,i:number)=>(
-<div
-key={i}
-className="border rounded-xl p-4 shadow-sm bg-gray-50 flex flex-col gap-2"
->
+                    {stats?.overdueList?.map((t: any, i: number) => (
+                        <div
+                            key={i}
+                            className="border rounded-xl p-4 shadow-sm bg-gray-50 flex flex-col gap-2"
+                        >
 
-<div className="font-semibold text-gray-900">
-{t.title}
-</div>
+                            <div className="font-semibold text-gray-900">
+                                {t.title}
+                            </div>
 
-<div className="text-sm text-gray-600">
-<span className="font-medium">Assignees:</span>{" "}
-{t.assignees?.join(", ")}
-</div>
+                            <div className="text-sm text-gray-600">
+                                <span className="font-medium">{t.assignees}:</span>{" "}
+                                {t.assignees?.join(", ")}
+                            </div>
 
-<div className="text-sm text-red-600 font-bold">
-{t.daysLate} days late
-</div>
+                            <div className="text-sm text-red-600 font-bold">
+                               {t.daysLate}: {t.daysLate}
+                            </div>
 
-</div>
-))}
+                        </div>
+                    ))}
 
-</div>
+                </div>
 
 
-{/* DESKTOP TABLE */}
+                {/* DESKTOP TABLE */}
 
-<div className="hidden md:block overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
 
-<table className="w-full text-sm">
+                    <table className="w-full text-sm">
 
-<thead className="text-gray-500 border-b">
+                        <thead className="text-gray-500 border-b">
 
-<tr>
-<th className="text-left py-2">Task</th>
-<th className="text-left py-2">Assignees</th>
-<th className="text-left py-2">Days Late</th>
-</tr>
+                            <tr>
+                                <th className="text-left py-2">{t.task}</th>
+                                <th className="text-left py-2">{t.assignees}</th>
+                                <th className="text-left py-2">{t.daysLate}</th>
+                            </tr>
 
-</thead>
+                        </thead>
 
-<tbody>
+                        <tbody>
 
-{stats?.overdueList?.map((t:any,i:number)=>(
+                            {stats?.overdueList?.map((t: any, i: number) => (
 
-<tr key={i} className="border-b">
+                                <tr key={i} className="border-b">
 
-<td className="py-2 font-medium">
-{t.title}
-</td>
+                                    <td className="py-2 font-medium">
+                                        {t.title}
+                                    </td>
 
-<td className="py-2">
-{t.assignees?.join(", ")}
-</td>
+                                    <td className="py-2">
+                                        {t.assignees?.join(", ")}
+                                    </td>
 
-<td className="py-2 text-red-600 font-bold">
-{t.daysLate}
-</td>
+                                    <td className="py-2 text-red-600 font-bold">
+                                        {t.daysLate}
+                                    </td>
 
-</tr>
+                                </tr>
 
-))}
+                            ))}
 
-</tbody>
+                        </tbody>
 
-</table>
+                    </table>
 
-</div>
+                </div>
 
-</div>
+            </div>
 
-</div>
+        </div>
 
- )
+    )
 
 }
 
 
 function KpiCard({
- title,
- value,
- color="text-gray-900"
-}:{title:string,value:number,color?:string}){
+    title,
+    value,
+    color = "text-gray-900"
+}: { title: string, value: number, color?: string }) {
 
- return (
+    return (
 
-<div className="bg-white border shadow rounded-xl p-4 flex flex-col gap-1">
+        <div className="bg-white border shadow rounded-xl p-4 flex flex-col gap-1">
 
-<div className="text-xs md:text-sm text-gray-500">
-{title}
-</div>
+            <div className="text-xs md:text-sm text-gray-500">
+                {title}
+            </div>
 
-<div className={`text-2xl md:text-3xl font-bold ${color}`}>
-{value}
-</div>
+            <div className={`text-2xl md:text-3xl font-bold ${color}`}>
+                {value}
+            </div>
 
-</div>
+        </div>
 
- )
+    )
 
 }

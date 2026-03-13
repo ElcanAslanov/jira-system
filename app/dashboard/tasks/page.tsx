@@ -35,6 +35,8 @@ import { useSearchParams } from "next/navigation";
 import Calendar from "antd/es/calendar";
 import { createPortal } from "react-dom"
 import Placeholder from "@tiptap/extension-placeholder"
+import { useLang } from "@/context/LanguageContext"
+import { translations } from "@/lib/translations"
 
 
 
@@ -50,19 +52,7 @@ const STATUS_FLOW: Record<Status, Status[]> = {
 
 };
 
-const STATUS_LABELS: Record<Status, string> = {
-  TODO: "Görülməli",
-  IN_PROGRESS: "İcra olunur",
-  DONE: "Tamamlandı",
-  CANCELLED: "Ləğv edildi",
-};
 
-const PRIORITY_LABELS: Record<string, string> = {
-  LOW: "Aşağı",
-  MEDIUM: "Orta",
-  HIGH: "Yüksək",
-  URGENT: "Təcili",
-};
 
 type Status = (typeof STATUSES)[number];
 
@@ -178,6 +168,10 @@ function formatDMY(date?: string | null, withTime = false) {
 }
 
 function PriorityPill({ p }: { p: string }) {
+
+  const { lang } = useLang()
+  const t = translations[lang]
+
   const base = "inline-flex items-center px-2 py-0.5 rounded-full text-xs border";
 
   const map: Record<string, string> = {
@@ -187,16 +181,25 @@ function PriorityPill({ p }: { p: string }) {
     URGENT: "bg-red-50 text-red-700 border-red-200",
   };
 
-  const cls = map[p] ?? "bg-slate-50 text-slate-700 border-slate-200";
+  const labels: Record<string, string> = {
+    LOW: t.low,
+    MEDIUM: t.medium,
+    HIGH: t.high,
+    URGENT: t.urgent
+  }
 
   return (
-    <span className={`${base} ${cls}`}>
-      {PRIORITY_LABELS[p] ?? p}
+    <span className={`${base} ${map[p] ?? ""}`}>
+      {labels[p] ?? p}
     </span>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
+
+  const { lang } = useLang()
+  const t = translations[lang]
+
   const base =
     "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border";
 
@@ -207,11 +210,16 @@ function StatusBadge({ status }: { status: string }) {
     CANCELLED: "bg-red-100 text-red-700 border-red-200",
   };
 
-  const cls = map[status] ?? "bg-slate-100 text-slate-700 border-slate-200";
+  const labels: Record<string, string> = {
+    TODO: t.todo,
+    IN_PROGRESS: t.inProgress,
+    DONE: t.taskDone,
+    CANCELLED: t.cancelled
+  }
 
   return (
-    <span className={`${base} ${cls}`}>
-      {STATUS_LABELS[status as Status] ?? status}
+    <span className={`${base} ${map[status] ?? ""}`}>
+      {labels[status] ?? status}
     </span>
   );
 }
@@ -320,6 +328,9 @@ const CalendarLazy = React.memo(function CalendarLazy(props: any) {
 
 export default function TasksPage() {
 
+  const { lang } = useLang()
+  const t = translations[lang]
+
   const downloadFile = async (bucket: string, path: string, fileName?: string) => {
     if (!path) return;
 
@@ -352,24 +363,38 @@ export default function TasksPage() {
   const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
   const [users, setUsers] = useState<UserInfo[]>([]);
 
+  const STATUS_LABELS: Record<Status, string> = {
+    TODO: t.todo,
+    IN_PROGRESS: t.inProgress,
+    DONE: t.taskDone,
+    CANCELLED: t.cancelled,
+  };
+
+  const PRIORITY_LABELS: Record<string, string> = {
+    LOW: t.low,
+    MEDIUM: t.medium,
+    HIGH: t.high,
+    URGENT: t.urgent,
+  };
+
 
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   // COMMENTS STATE
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
 
-  const editor = useEditor({
+const editor = useEditor(
+  {
     extensions: [
       StarterKit,
       Placeholder.configure({
-        placeholder: "Şərh yaz..."
+        placeholder: t.writeComment
       })
     ],
-    immediatelyRender: false,
-    onUpdate({ editor }) {
-      setNewComment(editor.getHTML());
-    },
-  });
+    immediatelyRender: false
+  },
+  [lang]
+)
 
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -797,33 +822,33 @@ export default function TasksPage() {
     }
   }, [openTaskId, rawTasks]);
 
-useEffect(() => {
-  if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id) return;
 
-  const channel = supabase
-    .channel("tasks-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "tasks",
-      },
-      async (payload) => {
+    const channel = supabase
+      .channel("tasks-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "tasks",
+        },
+        async (payload) => {
 
-        // 🔥 yeni task gəldi
-        await loadTasks();
+          // 🔥 yeni task gəldi
+          await loadTasks();
 
-        message.success("Yeni tapşırıq əlavə edildi");
+          message.success("Yeni tapşırıq əlavə edildi");
 
-      }
-    )
-    .subscribe();
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [user?.id, loadTasks]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadTasks]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -989,7 +1014,7 @@ useEffect(() => {
         const data = await res.json().catch(() => null);
 
         const errorMessage =
-          data?.error || "Şərh göndərilə bilmədi";
+          data?.error || t.commentError;
 
         message.error(errorMessage);
 
@@ -1029,11 +1054,11 @@ useEffect(() => {
       setCommentFiles([]);
       editor?.commands.clearContent();
 
-      message.success("Şərh əlavə edildi");
+      message.success(t.commentAdded);
 
     } catch (err) {
       console.error("Add comment failed:", err);
-      message.error("Xəta baş verdi");
+      message.error(t.error);
     }
   };
 
@@ -1155,8 +1180,8 @@ useEffect(() => {
     [tasksBy, updateTask, loadTasks, pushActivity]
   );
 
-  if (loading) return <div className="p-10">Loading...</div>;
-  if (!user) return <div className="p-10">No user session</div>;
+  if (loading) return <div className="p-10">{t.loading}</div>;
+  if (!user) return <div className="p-10">{t.noSession}</div>;
 
   const isCreator = viewTask?.created_by === user.id
   const isAssigned = viewTask?.assigned_to?.includes(user.id)
@@ -1173,7 +1198,7 @@ useEffect(() => {
   return (
     <div className="min-h-screen bg-slate-50 px-4 sm:px-6 lg:px-10 pt-0 pb-6 lg:pb-10 space-y-8 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h1 className="text-3xl font-bold">🔥 Tapşırıqlar</h1>
+        <h1 className="text-3xl font-bold">🔥 {t.tasks}</h1>
 
         <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
           <button
@@ -1183,7 +1208,7 @@ useEffect(() => {
               : "text-gray-600"
               }`}
           >
-            Lövhə
+            {t.board}
           </button>
 
           <button
@@ -1193,7 +1218,7 @@ useEffect(() => {
               : "text-gray-600"
               }`}
           >
-            Siyahı
+            {t.list}
           </button>
 
           <button
@@ -1203,7 +1228,7 @@ useEffect(() => {
               : "text-gray-600"
               }`}
           >
-            Kalendar
+            {t.calendar}
           </button>
         </div>
 
@@ -1219,19 +1244,18 @@ useEffect(() => {
                   // 🚀 XLSX yalnız klik zamanı yüklənəcək
                   const XLSX = await import("xlsx");
 
-                  const data = filteredFlat.map((t) => ({
-                    "Başlıq": t.title,
-                    "Təsvir": t.description ?? "",
-                    "Status": t.status.replace("_", " "),
-                    "Prioritet": t.priority,
-                    "Başlama tarixi": formatDMY(t.start_date),
-                    "Son tarix": formatDMY(t.due_date),
-                    "Təyin olunan": (t.assigned_to ?? []).join(", "),
-                    "Fayllar": (t.files ?? []).map(f => f.name).join(", "),
-                    "Yaradılma tarixi": formatDMY(t.created_at, true),
-                    "Yenilənmə tarixi": formatDMY(t.updated_at, true),
+                  const data = filteredFlat.map((task) => ({
+                    Title: task.title,
+                    Description: task.description ?? "",
+                    Status: task.status.replace("_", " "),
+                    Priority: task.priority,
+                    StartDate: formatDMY(task.start_date),
+                    EndDate: formatDMY(task.due_date),
+                    Assignees: (task.assigned_to ?? []).join(", "),
+                    Files: (task.files ?? []).map(f => f.name).join(", "),
+                    CreatedAt: formatDMY(task.created_at, true),
+                    UpdatedAt: formatDMY(task.updated_at, true),
                   }));
-
                   const worksheet = XLSX.utils.json_to_sheet(data);
                   const workbook = XLSX.utils.book_new();
                   XLSX.utils.book_append_sheet(workbook, worksheet, "Tapşırıqlar");
@@ -1244,7 +1268,7 @@ useEffect(() => {
               }}
               className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
             >
-              Eksport
+              {t.export}
             </button>
           )}
           {can("tasks.print.list") && (
@@ -1252,7 +1276,7 @@ useEffect(() => {
               onClick={() => window.print()}
               className="border px-4 py-2 rounded-xl text-gray-700 hover:bg-white shadow-sm"
             >
-              Çap
+              {t.print}
             </button>
           )}
         </div>
@@ -1295,6 +1319,7 @@ useEffect(() => {
                   id={col.id}
                   title={col.id}
                   tasks={col.tasks}
+                  statusLabels={STATUS_LABELS}
                   can={can}
                   currentUserId={user.id}
                   userRole={roleName ?? ""}
@@ -1338,8 +1363,8 @@ useEffect(() => {
   gap-6
 ">
             <MultiSelectDropdown
-              label="Status"
-              placeholder="Status seç"
+              label={t.status}
+              placeholder={t.selectStatus}
               value={statusFilter}
               onChange={(vals) => {
                 setStatusFilter(vals as Status[]);
@@ -1352,23 +1377,23 @@ useEffect(() => {
             />
 
             <MultiSelectDropdown
-              label="Prioritet"
-              placeholder="Prioritet seç"
+              label={t.priority}
+              placeholder={t.selectPriority}
               value={priorityFilter}
               onChange={(vals) => {
                 setPriorityFilter(vals);
                 setPage(1);
               }}
               options={[
-                { value: "LOW", label: "Aşağı" },
-                { value: "MEDIUM", label: "Orta" },
-                { value: "HIGH", label: "Yüksək" },
-                { value: "URGENT", label: "Təcili" },
+                { value: "LOW", label: t.low },
+                { value: "MEDIUM", label: t.medium },
+                { value: "HIGH", label: t.high },
+                { value: "URGENT", label: t.urgent },
               ]}
             />
             <MultiSelectDropdown
-              label="Təyin edilmiş"
-              placeholder="İşçi seç"
+              label={t.assignees}
+              placeholder={t.selectEmployee}
               value={assignedFilter}
               onChange={(vals) => {
                 setAssignedFilter(vals);
@@ -1382,10 +1407,10 @@ useEffect(() => {
 
             {/* START RANGE */}
             <div className="space-y-1">
-              <div className="text-xs font-medium text-gray-600">Başlama tarixi aralığı</div>
+              <div className="text-xs font-medium text-gray-600">{t.startDateRange}</div>
               <RangePicker
                 format="DD/MM/YYYY"
-                placeholder={["Başlama", "Bitmə"]}
+                placeholder={[t.start, t.end]}
                 value={[
                   startRange[0] ? dayjs(startRange[0]) : null,
                   startRange[1] ? dayjs(startRange[1]) : null,
@@ -1403,10 +1428,10 @@ useEffect(() => {
 
             {/* DUE RANGE */}
             <div className="space-y-1">
-              <div className="text-xs font-medium text-gray-600">Bitmə tarixi aralığı</div>
+              <div className="text-xs font-medium text-gray-600">{t.endDateRange}</div>
               <RangePicker
                 format="DD/MM/YYYY"
-                placeholder={["Başlama", "Bitmə"]}
+                placeholder={[t.start, t.end]}
                 value={[
                   dueRange[0] ? dayjs(dueRange[0]) : null,
                   dueRange[1] ? dayjs(dueRange[1]) : null,
@@ -1435,7 +1460,7 @@ useEffect(() => {
               }}
               className="bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 font-medium"
             >
-              Sıfırla
+              {t.clear}
             </button>
 
           </div>
@@ -1446,11 +1471,11 @@ useEffect(() => {
 
             {/* HEADER */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b bg-gray-50 gap-2">
-              <div className="font-semibold">Tapşırıqlar Cədvəli</div>
+              <div className="font-semibold">{t.tasksTable}</div>
               <div className="text-sm text-gray-600">
-                Page <span className="font-medium">{page}</span> /{" "}
+                {t.page} <span className="font-medium">{page}</span> /{" "}
                 <span className="font-medium">{totalPages}</span> —{" "}
-                <span className="font-medium">{filteredFlat.length}</span> items
+                <span className="font-medium">{filteredFlat.length}</span> {t.items}
               </div>
             </div>
 
@@ -1462,27 +1487,27 @@ useEffect(() => {
                 <thead className="bg-gray-100">
                   <tr>
                     <th onClick={() => toggleSort("title")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Başlıq {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      {t.taskName} {sortBy === "title" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                     <th onClick={() => toggleSort("status")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Status {sortBy === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      {t.status} {sortBy === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                     <th onClick={() => toggleSort("priority")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Prioritet {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      {t.priority} {sortBy === "priority" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                     </th>
                     <th onClick={() => toggleSort("start_date")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Başlama vaxtı
+                      {t.startDate}
                     </th>
                     <th onClick={() => toggleSort("due_date")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Bitmə vaxtı
+                      {t.endDate}
                     </th>
                     <th onClick={() => toggleSort("assigned_to")} className="p-3 text-left cursor-pointer hover:bg-gray-200">
-                      Təyin edilmiş işçi
+                      {t.assignees}
                     </th>
                     <th className="p-3 text-left">
-                      Fayllar
+                      {t.files}
                     </th>
-                    <th className="p-3 text-right">Əməliyyatlar</th>
+                    <th className="p-3 text-right">{t.actions}</th>
                   </tr>
                 </thead>
 
@@ -1493,7 +1518,7 @@ useEffect(() => {
                         <div className="font-medium">{t.title}</div>
                         {t.creator_name && (
                           <div className="text-[11px] text-gray-400">
-                            {t.creator_name} tərəfindən yaradılıb
+                           {t.creator_name} {translations[lang].createdByUser}
                           </div>
                         )}
                       </td>
@@ -1583,7 +1608,7 @@ useEffect(() => {
                             }}
                             className="border px-3 py-1.5 rounded-lg relative"
                           >
-                            Bax
+                            {translations[lang].view}
                           </button>
 
                           {t.comment_count ? (
@@ -1597,13 +1622,13 @@ useEffect(() => {
                             onClick={() => setSelectedTask(t)}
                             className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
                           >
-                            Düzəliş et
+                           {translations[lang].edit}
                           </button>
                         )}
                         {can("tasks.delete.list") && (
                           <button
                             onClick={async () => {
-                              if (!confirm("Bu tapşırıq silinsin?")) return;
+                      if (!confirm(translations[lang].confirmDeleteTask)) return;
 
                               const snapshot = tasksBy;
 
@@ -1631,7 +1656,7 @@ useEffect(() => {
                             }}
                             className="border px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50"
                           >
-                            Sil
+                            {translations[lang].delete}
                           </button>
                         )}
                       </td>
@@ -1641,7 +1666,7 @@ useEffect(() => {
                   {paginatedTasks.length === 0 && (
                     <tr>
                       <td colSpan={8} className="p-6 text-center text-gray-500">
-                        Tapşırıq tapılmadı.
+                        {t.tasksNotFound}
                       </td>
                     </tr>
                   )}
@@ -1670,11 +1695,11 @@ useEffect(() => {
                   </div>
 
                   <div className="mt-3 text-sm text-gray-600 space-y-1">
-                    <div>Status: {t.status}</div>
-                    <div>Start: {formatDMY(t.start_date)}</div>
-                    <div>Due: {formatDMY(t.due_date)}</div>
+                    <div>{translations[lang].status}: {t.status}</div>
+                    <div>{translations[lang].startDate}: {formatDMY(t.start_date)}</div>
+                    <div>{translations[lang].endDate}: {formatDMY(t.due_date)}</div>
                     <div>
-                      Assigned:
+                     {translations[lang].assignedTo}
                       {t.assigned_to?.length ? (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {t.assigned_to.map((u, i) => (
@@ -1696,7 +1721,7 @@ useEffect(() => {
                         }}
                         className="w-full border px-3 py-2 rounded-lg text-sm"
                       >
-                        Bax
+                        {translations[lang].view}
                       </button>
 
                       {t.comment_count ? (
@@ -1710,13 +1735,13 @@ useEffect(() => {
                         onClick={() => setSelectedTask(t)}
                         className="flex-1 border px-3 py-2 rounded-lg text-sm"
                       >
-                        Edit
+                       {translations[lang].edit}
                       </button>
                     )}
                     {can("tasks.delete.list") && (
                       <button
                         onClick={async () => {
-                          if (!confirm("Bu tapşırıq silinsin?")) return;
+                          if (!confirm(translations[lang].confirmDeleteTask)) return;
 
                           const snapshot = tasksBy;
                           const f = findTask(tasksBy, t.id);
@@ -1742,7 +1767,7 @@ useEffect(() => {
                         }}
                         className="flex-1 border px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
                       >
-                        Sil
+                      {translations[lang].delete}
                       </button>
                     )}
                   </div>
@@ -1751,7 +1776,7 @@ useEffect(() => {
 
               {paginatedTasks.length === 0 && (
                 <div className="text-center text-gray-500 py-6">
-                  No tasks found.
+                  {t.noTasks}
                 </div>
               )}
             </div>
@@ -1765,7 +1790,7 @@ useEffect(() => {
                 className="border px-4 py-2 rounded-xl w-full sm:w-auto"
                 disabled={page <= 1}
               >
-                Əvvəlki
+                {t.previous}
               </button>
 
               <button
@@ -1773,7 +1798,7 @@ useEffect(() => {
                 className="border px-4 py-2 rounded-xl w-full sm:w-auto"
                 disabled={page >= totalPages}
               >
-                Növbəti
+                {t.next}
               </button>
             </div>
 
@@ -1787,18 +1812,6 @@ useEffect(() => {
           setDrawerOpen(true);
         }} />
       )}
-
-      {/* ACTIVITY PANEL
-      <div className="bg-white p-6 rounded-2xl shadow border">
-        <h2 className="font-semibold mb-4">Activity Log</h2>
-        <div className="text-sm text-gray-600 space-y-2">
-          {activity.length ? (
-            activity.map((line, i) => <div key={i}>{line}</div>)
-          ) : (
-            <div className="text-gray-500">No activity yet.</div>
-          )}
-        </div>
-      </div> */}
 
 
       {/* EDIT DRAWER */}
@@ -1912,7 +1925,7 @@ useEffect(() => {
             {/* HEADER */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 style={{ fontSize: 20, fontWeight: 900 }}>
-                👤 Tapşırıq məlumatları
+                👤 {t.taskDetails}
               </h2>
 
               <div style={{ display: "flex", gap: 8 }}>
@@ -1962,7 +1975,7 @@ useEffect(() => {
                       fontSize: 12,
                     }}
                   >
-                    Eksport
+                    {t.export}
                   </button>
                 )}
 
@@ -1978,7 +1991,7 @@ useEffect(() => {
                       fontSize: 12,
                     }}
                   >
-                    Çap et
+                    {t.print}
                   </button>
                 )}
                 {can("tasks.edit.drawer") && (
@@ -1999,13 +2012,13 @@ useEffect(() => {
                       color: "#4338ca",
                     }}
                   >
-                    Düzəliş et
+                   {translations[lang].edit}
                   </button>
                 )}
                 {can("tasks.delete.drawer") && (
                   <button
                     onClick={async () => {
-                      if (!confirm("Bu tapşırıq silinsin?")) return;
+                      if (!confirm(t.confirmDeleteTask)) return;
 
                       const snapshot = tasksBy;
                       const f = findTask(tasksBy, viewTask.id);
@@ -2041,7 +2054,7 @@ useEffect(() => {
                       color: "#b91c1c",
                     }}
                   >
-                    Sil
+                    {t.delete}
                   </button>
                 )}
 
@@ -2059,10 +2072,10 @@ useEffect(() => {
             {/* CONTENT */}
             <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
 
-              <DrawerRow label="Başlıq" value={viewTask.title} />
+              <DrawerRow label={t.taskName} value={viewTask.title} />
 
               <DrawerRow
-                label="Təsvir"
+                label={t.description}
                 value={
                   <div
                     style={{
@@ -2078,7 +2091,7 @@ useEffect(() => {
               />
 
               <DrawerRow
-                label="Status"
+                label={t.status}
                 value={
                   <div className="cursor-pointer inline-block hover:opacity-80 transition">
                     <StatusBadge status={viewTask.status} />
@@ -2102,8 +2115,8 @@ useEffect(() => {
                     }}
                     className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-indigo-700"
                   >
-                    {viewTask.status === "TODO" && "Tapşırığı başlat"}
-                    {viewTask.status === "IN_PROGRESS" && "Tapşırığı tamamla"}
+                    {viewTask.status === "TODO" && t.startTask}
+                    {viewTask.status === "IN_PROGRESS" && t.completeTask}
                   </button>
                 )}
 
@@ -2119,14 +2132,14 @@ useEffect(() => {
                     }}
                     className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-300"
                   >
-                    Yenidən tapşırığı aç
+                    {t.reopenTask}
                   </button>
                 )}
 
               </div>
 
               <DrawerRow
-                label="Prioritet"
+                label={t.priority}
                 value={
                   <div className="cursor-pointer inline-block hover:opacity-80 transition">
                     <PriorityPill p={String(viewTask.priority)} />
@@ -2135,17 +2148,17 @@ useEffect(() => {
               />
 
               <DrawerRow
-                label="Başlama tarixi"
+                label={t.startDate}
                 value={formatDMY(viewTask.start_date)}
               />
 
               <DrawerRow
-                label="Son tarix"
+                label={t.endDate}
                 value={formatDMY(viewTask.due_date)}
               />
 
               <DrawerRow
-                label="Təyin olunan"
+                label={t.assignees}
                 value={
                   viewTask.assigned_to?.length ? (
                     <div className="flex flex-wrap gap-2">
@@ -2158,7 +2171,7 @@ useEffect(() => {
               />
 
               <DrawerRow
-                label="Yaradan"
+                label={t.createdBy}
                 value={
                   viewTask.created_by ? (
                     <UserBadge userId={viewTask.created_by} users={users} />
@@ -2169,17 +2182,17 @@ useEffect(() => {
               />
 
               <DrawerRow
-                label="Yaradılma tarixi"
+                label={t.createdAt}
                 value={formatDMY(viewTask.created_at, true)}
               />
 
               <DrawerRow
-                label="Yenilənmə tarixi"
+                label={t.updatedAt}
                 value={formatDMY(viewTask.updated_at, true)}
               />
 
               <DrawerRow
-                label="Yeniləyən İstifadəçi"
+                label={t.updatedBy}
                 value={viewTask.updated_by_name ?? "-"}
               />
 
@@ -2187,7 +2200,7 @@ useEffect(() => {
 
               {viewTask.files?.length ? (
                 <DrawerRow
-                  label="Fayllar"
+                  label={t.files}
                   value={
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {viewTask.files.map((f, i) => (
@@ -2235,7 +2248,7 @@ useEffect(() => {
               {viewTask.allow_comments !== false && (
                 <div style={{ marginTop: 30 }}>
                   <h3 style={{ fontWeight: 900, marginBottom: 10 }}>
-                    💬 Şərhlər
+                    💬 {t.comments}
                   </h3>
 
                   {comments.length ? (
@@ -2272,7 +2285,7 @@ useEffect(() => {
                                       `${r.employees?.ad ?? ""} ${r.employees?.soyad ?? ""
                                         }`.trim()
                                   )
-                                  .join(", ")} tərəfindən görüldü
+                                  .join(", ")} {t.seenBy}
                               </div>
                             )}
 
@@ -2343,7 +2356,7 @@ useEffect(() => {
                     </div>
                   ) : (
                     <div style={{ color: "#9ca3af", marginBottom: 10 }}>
-                      Hələ şərh yoxdur
+                      {t.noComments}
                     </div>
                   )}
 
@@ -2395,7 +2408,7 @@ useEffect(() => {
       cursor-pointer
       transition
     ">
-                        📎 Fayl
+                        📎 {t.file}
                         <input
                           type="file"
                           hidden
@@ -2509,7 +2522,7 @@ useEffect(() => {
         transition
       "
                       >
-                        Göndər
+                        {t.send}
                       </button>
 
                     </div>
@@ -2596,6 +2609,9 @@ function MultiSelectDropdown({
   value: string[];
   onChange: (vals: string[]) => void;
 }) {
+
+  const { lang } = useLang()
+  const t = translations[lang]
   const [open, setOpen] = useState(false);
   const [temp, setTemp] = useState<string[]>(value);
   const [search, setSearch] = useState("");
@@ -2617,7 +2633,7 @@ function MultiSelectDropdown({
         className="border rounded-xl px-3 py-2 bg-gray-50 cursor-pointer flex justify-between items-center"
       >
         <span className="text-sm text-gray-700">
-          {value.length ? `${value.length} seçildi` : placeholder}
+        {value.length ? `${value.length} ${t.selected}` : placeholder}
         </span>
         <span className="text-indigo-600 text-sm">▲</span>
       </div>
@@ -2628,7 +2644,7 @@ function MultiSelectDropdown({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Axtar..."
+              placeholder={t.search}
               className="w-full border rounded-lg px-3 py-2"
             />
           </div>
@@ -2660,7 +2676,7 @@ function MultiSelectDropdown({
               onClick={() => setTemp([])}
               className="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-sm"
             >
-              Təmizlə
+              {t.clear}
             </button>
 
             <button
@@ -2670,7 +2686,7 @@ function MultiSelectDropdown({
               }}
               className="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-sm"
             >
-              Tamamla
+              {t.done}
             </button>
           </div>
         </div>
@@ -2711,7 +2727,8 @@ function Column({
   updateTask,
   loadTasks,
   moveTask,
-  users
+  users,
+  statusLabels
 }: {
   id: Status;
   title: string;
@@ -2724,6 +2741,8 @@ function Column({
   loadTasks: () => void;
   moveTask: (taskId: string, nextStatus: Status) => void;
   users: UserInfo[];
+  statusLabels: Record<Status, string>;
+
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isCancelledLocked =
@@ -2747,7 +2766,7 @@ function Column({
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-gray-800 tracking-wide flex items-center gap-2">
-          {STATUS_LABELS[id]}
+          {statusLabels[id]}
 
           {isCancelledLocked && (
             <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
@@ -2836,6 +2855,10 @@ const TaskCard = React.memo(function TaskCard({
   moveTask: (taskId: string, nextStatus: Status) => void;
   isMobile: boolean;
 }) {
+
+  const { lang } = useLang()
+  const t = translations[lang]
+
   const isDone =
     (task.status === "DONE" || task.status === "CANCELLED") &&
     userRole === "EMPLOYEE";
@@ -2937,7 +2960,7 @@ const TaskCard = React.memo(function TaskCard({
 
       {task.creator_name && (
         <div className="text-[11px] text-gray-400 mt-1">
-          {task.creator_name} tərəfindən yaradılıb
+          {task.creator_name} {t.createdByUser}
         </div>
       )}
 
@@ -2997,8 +3020,8 @@ const TaskCard = React.memo(function TaskCard({
             }}
             className="mt-3 w-full bg-indigo-600 text-white py-1.5 rounded-lg text-xs hover:bg-indigo-700"
           >
-            {task.status === "TODO" && "Tapşırığı başlat"}
-            {task.status === "IN_PROGRESS" && "Tapşırığı tamamla"}
+            {task.status === "TODO" && t.startTask}
+            {task.status === "IN_PROGRESS" && t.completeTask}
           </button>
         )}
         {task.status === "DONE" && isCreator && (
@@ -3011,7 +3034,7 @@ const TaskCard = React.memo(function TaskCard({
             }}
             className="mt-3 w-full bg-gray-200 text-gray-800 py-1.5 rounded-lg text-xs hover:bg-gray-300"
           >
-            Tapşırığı yenidən açın
+            {t.reopenTask}
           </button>
         )}
 
@@ -3060,6 +3083,9 @@ type EditDrawerProps = {
 
 function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerProps) {
 
+  const { lang } = useLang()
+  const t = translations[lang]
+
   const isAssignedUser =
     task.assigned_to?.includes(currentUserId);
 
@@ -3105,7 +3131,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
 
         {/* HEADER */}
         <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
-          <h2 className="text-lg font-bold">Edit Task</h2>
+          <h2 className="text-lg font-bold">{t.editTask}</h2>
           <button onClick={onClose}>✖</button>
         </div>
 
@@ -3116,7 +3142,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
           <>
             {/* TITLE */}
             <div>
-              <label className="text-sm font-medium text-gray-700">Title</label>
+              <label className="text-sm font-medium text-gray-700">{t.title}</label>
               <input
 
                 className="w-full border rounded-lg px-3 py-2 mt-1 disabled:bg-gray-100"
@@ -3129,7 +3155,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
 
             {/* DESCRIPTION */}
             <div>
-              <label className="text-sm font-medium text-gray-700">Description</label>
+              <label className="text-sm font-medium text-gray-700">{t.description}</label>
               <textarea
 
                 className="w-full border rounded-lg px-3 py-2 mt-1 min-h-[120px] disabled:bg-gray-100"
@@ -3168,7 +3194,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
 
             {/* PRIORITY */}
             <div>
-              <label className="text-sm font-medium text-gray-700">Priority</label>
+              <label className="text-sm font-medium text-gray-700">{t.priority}</label>
               <select
 
                 className="w-full border rounded-lg px-3 py-2 mt-1 disabled:bg-gray-100"
@@ -3177,16 +3203,16 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
                   setForm((p) => ({ ...p, priority: e.target.value as any }))
                 }
               >
-                <option value="LOW">Aşağı</option>
-                <option value="MEDIUM">Orta</option>
-                <option value="HIGH">Yüksək</option>
-                <option value="URGENT">Təcili</option>
+                <option value="LOW">{t.low}</option>
+                <option value="MEDIUM">{t.medium}</option>
+                <option value="HIGH">{t.high}</option>
+                <option value="URGENT">{t.urgent}</option>
               </select>
             </div>
 
             {/* START DATE */}
             <div>
-              <label className="text-sm font-medium text-gray-700">Start date</label>
+              <label className="text-sm font-medium text-gray-700">{t.startDate}</label>
               <input
 
                 type="date"
@@ -3203,7 +3229,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
 
             {/* DUE DATE */}
             <div>
-              <label className="text-sm font-medium text-gray-700">Due date</label>
+              <label className="text-sm font-medium text-gray-700">{t.dueDate}</label>
               <input
 
                 type="date"
@@ -3222,14 +3248,14 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
             {/* ASSIGNED */}
             <div className="col-span-2">
               <label className="text-sm font-medium text-gray-700">
-                Assigned to
+                {t.assignedTo}
               </label>
 
               <Select
 
                 mode="multiple"
                 allowClear
-                placeholder="User seç"
+                placeholder={t.selectUser}
                 className="w-full mt-1"
                 value={(form.assigned_to ?? []) as string[]}
                 onChange={(vals) =>
@@ -3250,7 +3276,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
           {/* FILES */}
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Add Files</label>
+            <label className="text-sm font-medium text-gray-700">{t.addFiles}</label>
             <input
               type="file"
               multiple
@@ -3270,7 +3296,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
             onClick={onClose}
             className="border px-5 py-2 rounded-lg"
           >
-            Cancel
+            {t.cancel}
           </button>
 
           <button
@@ -3285,7 +3311,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
             }}
             className="bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700"
           >
-            Save Changes
+            {t.saveChanges}
           </button>
         </div>
 
@@ -3301,6 +3327,9 @@ function CalendarView({
   tasks: Task[];
   onSelectTask: (t: Task) => void;
 }) {
+
+  const { lang } = useLang()
+  const t = translations[lang]
 
   const dateCellRender = (value: dayjs.Dayjs) => {
     const dayStr = value.format("YYYY-MM-DD");
@@ -3327,7 +3356,7 @@ function CalendarView({
 
         {dayTasks.length > 3 && (
           <div className="text-[10px] text-gray-500">
-            + {dayTasks.length - 3} more
+            + {dayTasks.length - 3} {t.more}
           </div>
         )}
       </div>
@@ -3361,6 +3390,9 @@ function CreateTaskModal({
   onClose: () => void;
   onCreate: (payload: Partial<Task>) => Promise<void> | void;
 }) {
+
+  const { lang } = useLang()
+  const t = translations[lang]
   const [form, setForm] = useState<Partial<Task>>({
     title: "",
     description: "",
@@ -3389,7 +3421,7 @@ function CreateTaskModal({
   overflow-hidden
 ">
         <div className="px-5 py-4 border-b bg-gray-50 flex items-center justify-between">
-          <div className="font-bold text-lg">New Task</div>
+          <div className="font-bold text-lg">{t.newTask}</div>
           <button onClick={onClose} className="text-sm text-gray-600 hover:text-gray-800">
             Close
           </button>
@@ -3397,7 +3429,7 @@ function CreateTaskModal({
 
         <div className="p-5 space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Title</label>
+            <label className="text-sm font-medium text-gray-700">{t.taskName}</label>
             <input
               className="w-full border rounded-lg px-3 py-2"
               value={form.title ?? ""}
@@ -3407,7 +3439,8 @@ function CreateTaskModal({
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Description</label>
+            <label className="text-sm font-medium text-gray-700">{t.description}
+            </label>
             <textarea
               className="w-full border rounded-lg px-3 py-2 min-h-[110px]"
               value={form.description ?? ""}
@@ -3418,7 +3451,7 @@ function CreateTaskModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium text-gray-700">Status</label>
+              <label className="text-sm font-medium text-gray-700">{t.status}</label>
               <select
                 className="w-full border rounded-lg px-3 py-2"
                 value={(form.status ?? "TODO") as string}
@@ -3433,7 +3466,7 @@ function CreateTaskModal({
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Priority</label>
+              <label className="text-sm font-medium text-gray-700">{t.priority}</label>
               <select
                 className="w-full border rounded-lg px-3 py-2"
                 value={(form.priority ?? "MEDIUM") as string}
@@ -3448,7 +3481,7 @@ function CreateTaskModal({
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">
-              Start date
+              {t.startDate}
             </label>
             <input
               type="date"
@@ -3461,7 +3494,7 @@ function CreateTaskModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium text-gray-700">Due date</label>
+              <label className="text-sm font-medium text-gray-700">{t.dueDate}</label>
               <input
                 type="date"
                 className="w-full border rounded-lg px-3 py-2"
@@ -3472,13 +3505,13 @@ function CreateTaskModal({
 
             <div>
               <label className="text-sm font-medium text-gray-700">
-                Assigned to
+                {t.assignedTo}
               </label>
 
               <Select
                 mode="multiple"
                 allowClear
-                placeholder="User seç"
+                placeholder={t.selectUser}
                 className="w-full"
                 value={(form.assigned_to ?? []) as string[]}
                 onChange={(vals) =>
@@ -3499,7 +3532,7 @@ function CreateTaskModal({
             <button
               onClick={async () => {
                 if (!form.title?.trim()) {
-                  alert("Title is required");
+                  alert(t.titleRequired);
                   return;
                 }
                 await onCreate({
@@ -3509,11 +3542,11 @@ function CreateTaskModal({
               }}
               className="bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700"
             >
-              Create
+              {t.createTask}
             </button>
 
             <button onClick={onClose} className="border px-5 py-2 rounded-lg text-gray-700 hover:bg-gray-50">
-              Cancel
+              {t.cancel}
             </button>
           </div>
         </div>
