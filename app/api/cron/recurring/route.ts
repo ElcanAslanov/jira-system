@@ -142,12 +142,13 @@ export async function GET(request: NextRequest) {
 
         /* DUPLICATE CHECK */
 
-        const { data: existing } = await supabase
-          .from("tasks")
-          .select("id")
-          .eq("recurring_rule_id", rule.id)
-          .eq("start_date", runDate)
-          .limit(1);
+       const { data: existing } = await supabase
+  .from("tasks")
+  .select("id")
+  .eq("recurring_rule_id", rule.id)
+  .gte("start_date", runDate)
+  .lt("start_date", runDate + "T23:59:59")
+  .limit(1);
 
         let taskCreated = false;
 
