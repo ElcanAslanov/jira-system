@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-/* ================= SECURITY ================= */
-
 function checkCronSecret(request: NextRequest) {
   const secret = request.headers.get("x-cron-secret");
   return secret === process.env.CRON_SECRET;
 }
-
-/* ================= DATE HELPERS ================= */
 
 function formatDate(date: Date) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -17,15 +13,12 @@ function formatDate(date: Date) {
     month: "2-digit",
     day: "2-digit",
   });
-
   return formatter.format(date);
 }
 
 function todayISO() {
   return formatDate(new Date());
 }
-
-/* ================= ASSIGNEE PARSER ================= */
 
 function extractAssignedIds(raw: any): string[] {
   if (!raw) return [];
@@ -53,11 +46,7 @@ function extractAssignedIds(raw: any): string[] {
   return [];
 }
 
-/* ================= CRON ================= */
-
 export async function GET(request: NextRequest) {
-
-  console.log("===== CRON START =====");
 
   if (!checkCronSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -70,46 +59,23 @@ export async function GET(request: NextRequest) {
 
   const today = todayISO();
 
-  console.log("TODAY:", today);
-
-  const { data: rules, error } = await supabase
+  const { data: rules } = await supabase
     .from("recurring_rules")
     .select("*")
     .lte("next_run_date", today)
     .eq("is_active", true);
 
-  if (error) {
-    console.error("RULE FETCH ERROR:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
   if (!rules || rules.length === 0) {
-    console.log("NO RULES TODAY");
     return NextResponse.json({ message: "No rules today" });
   }
 
   for (const rule of rules) {
-
-    console.log("PROCESS RULE:", rule.title);
-
-    if (rule.end_date && rule.end_date < today) {
-      await supabase
-        .from("recurring_rules")
-        .update({ is_active: false })
-        .eq("id", rule.id);
-
-      continue;
-    }
 
     let next = new Date(rule.next_run_date + "T00:00:00+04:00");
 
     while (formatDate(next) <= today) {
 
       const runDate = formatDate(next);
-
-      console.log("RUN DATE:", runDate);
-
-      /* DUPLICATE CHECK */
 
       const { data: existing } = await supabase
         .from("tasks")
@@ -120,9 +86,20 @@ export async function GET(request: NextRequest) {
 
       if (!existing) {
 
-        console.log("CREATE TASK:", rule.title, runDate);
+        /* EMPLOYEE ID TAP */
 
-        const { data: task, error: insertErr } = await supabase
+        const { data: creator } = await supabase
+          .from("employees")
+          .select("id")
+          .eq("user_id", rule.created_by)
+          .maybeSingle();
+
+        if (!creator) {
+          console.log("EMPLOYEE NOT FOUND FOR USER", rule.created_by);
+          break;
+        }
+
+        const { data: task } = await supabase
           .from("tasks")
           .insert({
             title: rule.title,
@@ -132,19 +109,13 @@ export async function GET(request: NextRequest) {
             start_date: runDate,
             due_date: runDate,
             recurring_rule_id: rule.id,
-            created_by: rule.created_by,
+            created_by: creator.id,
             company_id: rule.company_id ?? null,
           })
           .select("id")
           .single();
 
-        if (insertErr) {
-          console.error("INSERT ERROR:", insertErr);
-        }
-
         if (task) {
-
-          console.log("TASK CREATED:", task.id);
 
           const assignedIds = extractAssignedIds(rule.assigned_to);
 
@@ -167,18 +138,10 @@ export async function GET(request: NextRequest) {
                     employee_id: empId,
                   }))
                 );
-
-              console.log("ASSIGNEES ADDED");
             }
           }
         }
-
-      } else {
-
-        console.log("TASK EXISTS:", runDate);
       }
-
-      /* NEXT DATE */
 
       if (rule.frequency === "DAILY") {
         next.setDate(next.getDate() + (rule.interval ?? 1));
@@ -202,8 +165,5 @@ export async function GET(request: NextRequest) {
       .eq("id", rule.id);
   }
 
-  console.log("===== CRON FINISHED =====");
-
   return NextResponse.json({ message: "Cron success" });
-
 }
