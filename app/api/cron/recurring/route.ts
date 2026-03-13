@@ -68,14 +68,10 @@ function extractAssignedIds(raw: any): string[] {
 /* ================= CRON ================= */
 
 export async function GET(request: NextRequest) {
-
   try {
 
     if (!checkCronSecret(request)) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const supabase = createClient(
@@ -126,13 +122,11 @@ export async function GET(request: NextRequest) {
 
       let next = new Date(rule.next_run_date + "T00:00:00+04:00");
 
-      /* MISS RUN LOOP */
-
       while (dateISO(next) <= today) {
 
         const runDate = dateISO(next);
 
-        /* WEEKLY CHECK */
+        /* WEEKLY FILTER */
 
         if (rule.frequency === "WEEKLY") {
 
@@ -146,7 +140,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        /* DUPLICATE PROTECTION */
+        /* DUPLICATE CHECK */
 
         const { data: existing } = await supabase
           .from("tasks")
@@ -154,6 +148,8 @@ export async function GET(request: NextRequest) {
           .eq("recurring_rule_id", rule.id)
           .eq("start_date", runDate)
           .limit(1);
+
+        let taskCreated = false;
 
         if (existing && existing.length > 0) {
 
@@ -171,9 +167,7 @@ export async function GET(request: NextRequest) {
             .eq("user_id", rule.created_by)
             .maybeSingle();
 
-          if (creator) {
-            creatorId = creator.id;
-          }
+          if (creator) creatorId = creator.id;
 
           /* CREATE TASK */
 
@@ -199,9 +193,9 @@ export async function GET(request: NextRequest) {
 
           } else {
 
-            console.log("TASK CREATED:", createdTask.id);
+            taskCreated = true;
 
-            /* ASSIGNEES */
+            console.log("TASK CREATED:", createdTask.id);
 
             const assignedIds = extractAssignedIds(rule.assigned_to);
 
@@ -229,18 +223,25 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        /* NEXT STEP */
+        /* NEXT STEP ONLY IF TASK CREATED */
 
-        if (rule.frequency === "DAILY") {
-          next.setDate(next.getDate() + (rule.interval ?? 1));
-        }
+        if (taskCreated) {
 
-        if (rule.frequency === "WEEKLY") {
-          next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
-        }
+          if (rule.frequency === "DAILY") {
+            next.setDate(next.getDate() + (rule.interval ?? 1));
+          }
 
-        if (rule.frequency === "MONTHLY") {
-          next.setMonth(next.getMonth() + (rule.interval ?? 1));
+          if (rule.frequency === "WEEKLY") {
+            next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
+          }
+
+          if (rule.frequency === "MONTHLY") {
+            next.setMonth(next.getMonth() + (rule.interval ?? 1));
+          }
+
+        } else {
+
+          break;
         }
 
       }
