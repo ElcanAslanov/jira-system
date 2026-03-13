@@ -60,7 +60,6 @@ export async function GET(request: NextRequest) {
   console.log("===== CRON START =====");
 
   if (!checkCronSecret(request)) {
-    console.log("CRON SECRET INVALID");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -85,20 +84,15 @@ export async function GET(request: NextRequest) {
   }
 
   if (!rules || rules.length === 0) {
-    console.log("NO RULES TO RUN");
+    console.log("NO RULES TODAY");
     return NextResponse.json({ message: "No rules today" });
   }
 
-  console.log("RULE COUNT:", rules.length);
-
   for (const rule of rules) {
 
-    console.log("PROCESSING RULE:", rule.id, rule.title);
+    console.log("PROCESS RULE:", rule.title);
 
     if (rule.end_date && rule.end_date < today) {
-
-      console.log("RULE EXPIRED:", rule.title);
-
       await supabase
         .from("recurring_rules")
         .update({ is_active: false })
@@ -115,36 +109,18 @@ export async function GET(request: NextRequest) {
 
       console.log("RUN DATE:", runDate);
 
-      /* CHECK DUPLICATE */
+      /* DUPLICATE CHECK */
 
-      const { data: existing, error: existErr } = await supabase
+      const { data: existing } = await supabase
         .from("tasks")
         .select("id")
         .eq("recurring_rule_id", rule.id)
         .eq("due_date", runDate)
         .maybeSingle();
 
-      if (existErr) {
-        console.error("DUPLICATE CHECK ERROR:", existErr);
-      }
-
       if (!existing) {
 
-        console.log("CREATING TASK FOR:", runDate);
-
-        /* CREATOR */
-
-        let creatorId = null;
-
-        const { data: creator } = await supabase
-          .from("employees")
-          .select("id")
-          .eq("user_id", rule.created_by)
-          .maybeSingle();
-
-        if (creator) creatorId = creator.id;
-
-        /* INSERT TASK */
+        console.log("CREATE TASK:", rule.title, runDate);
 
         const { data: task, error: insertErr } = await supabase
           .from("tasks")
@@ -156,21 +132,19 @@ export async function GET(request: NextRequest) {
             start_date: runDate,
             due_date: runDate,
             recurring_rule_id: rule.id,
-            created_by: creatorId,
+            created_by: rule.created_by,
             company_id: rule.company_id ?? null,
           })
           .select("id")
           .single();
 
         if (insertErr) {
-          console.error("TASK INSERT ERROR:", insertErr);
+          console.error("INSERT ERROR:", insertErr);
         }
 
         if (task) {
 
           console.log("TASK CREATED:", task.id);
-
-          /* ASSIGNEES */
 
           const assignedIds = extractAssignedIds(rule.assigned_to);
 
@@ -194,14 +168,14 @@ export async function GET(request: NextRequest) {
                   }))
                 );
 
-              console.log("ASSIGNEES ADDED:", employeeIds.length);
+              console.log("ASSIGNEES ADDED");
             }
           }
         }
 
       } else {
 
-        console.log("TASK ALREADY EXISTS FOR:", runDate);
+        console.log("TASK EXISTS:", runDate);
       }
 
       /* NEXT DATE */
@@ -220,14 +194,10 @@ export async function GET(request: NextRequest) {
 
     }
 
-    const newNext = formatDate(next);
-
-    console.log("UPDATING NEXT RUN:", newNext);
-
     await supabase
       .from("recurring_rules")
       .update({
-        next_run_date: newNext,
+        next_run_date: formatDate(next),
       })
       .eq("id", rule.id);
   }
