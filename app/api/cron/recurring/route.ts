@@ -226,24 +226,17 @@ export async function GET(request: NextRequest) {
 
         /* NEXT STEP ONLY IF TASK CREATED */
 
-        if (taskCreated) {
+       if (rule.frequency === "DAILY") {
+  next.setDate(next.getDate() + (rule.interval ?? 1));
+}
 
-          if (rule.frequency === "DAILY") {
-            next.setDate(next.getDate() + (rule.interval ?? 1));
-          }
+if (rule.frequency === "WEEKLY") {
+  next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
+}
 
-          if (rule.frequency === "WEEKLY") {
-            next.setDate(next.getDate() + 7 * (rule.interval ?? 1));
-          }
-
-          if (rule.frequency === "MONTHLY") {
-            next.setMonth(next.getMonth() + (rule.interval ?? 1));
-          }
-
-        } else {
-
-          break;
-        }
+if (rule.frequency === "MONTHLY") {
+  next.setMonth(next.getMonth() + (rule.interval ?? 1));
+}
 
       }
 
