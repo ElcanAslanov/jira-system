@@ -283,6 +283,24 @@ export const translations = {
         resume: "Davam et",
         recurringTask: "Dövrlü tapşırıq",
         confirmDeleteRecurring: "Bu dövrlü tapşırıq silinsin?",
+
+        //rolepermission sehifesi
+        // role permissions page
+
+        companyPermissions: "Şirkət Yetkiləri",
+        guidePermissions: "Rəhbər Yetkiləri",
+        taskButtons: "Tapşırıq Button Yetkiləri",
+        recurringButtons: "Dövrlü Tapşırıq Button Yetkiləri",
+        searchCompany: "Şirkət axtar...",
+        savedSuccess: "Yadda saxlanıldı",
+
+        //userpermission sehifesi
+        roleNotFound: "Rol tapılmadı",
+
+        //umumi permission sehifesi
+        permissionManagementDesc: "Rol və istifadəçi səviyyəsində icazələri idarə et.",
+        rolePermissions: "Rol yetkiləri",
+        userPermissions: "İstifadəçi yetkiləri",
     },
 
     en: {
@@ -567,6 +585,21 @@ export const translations = {
         recurringTask: "Recurring task",
         confirmDeleteRecurring: "Delete this recurring task?",
 
+        //ROLEPERMISSION PAGE
+        companyPermissions: "Company permissions",
+        guidePermissions: "Guide permissions",
+        taskButtons: "Task button permissions",
+        recurringButtons: "Recurring task button permissions",
+        searchCompany: "Search company...",
+        savedSuccess: "Saved successfully",
+
+        //userpermission sehifesi
+        roleNotFound: "Role not found",
+
+        //umumi role
+        permissionManagementDesc: "Manage permissions at role and user level.",
+        rolePermissions: "Role permissions",
+        userPermissions: "User permissions",
     },
 
     tr: {
@@ -850,6 +883,22 @@ export const translations = {
         resume: "Devam et",
         recurringTask: "Tekrarlayan görev",
         confirmDeleteRecurring: "Bu tekrarlayan görev silinsin mi?",
+
+        //ROLEPERMISSION PAGE
+        companyPermissions: "Şirket yetkileri",
+        guidePermissions: "Rehber yetkileri",
+        taskButtons: "Görev buton yetkileri",
+        recurringButtons: "Tekrarlayan görev buton yetkileri",
+        searchCompany: "Şirket ara...",
+        savedSuccess: "Başarıyla kaydedildi",
+
+        //userpermission sehifesi
+        roleNotFound: "Rol bulunamadı",
+
+        //role umumi
+        permissionManagementDesc: "Rol ve kullanıcı seviyesinde izinleri yönetin.",
+        rolePermissions: "Rol yetkileri",
+        userPermissions: "Kullanıcı yetkileri",
     },
 
     ru: {
@@ -1133,5 +1182,20 @@ export const translations = {
         resume: "Продолжить",
         recurringTask: "Повторяющаяся задача",
         confirmDeleteRecurring: "Удалить эту повторяющуюся задачу?",
+
+        companyPermissions: "Доступ к компаниям",
+        guidePermissions: "Права руководителей",
+        taskButtons: "Права кнопок задач",
+        recurringButtons: "Права кнопок повторяющихся задач",
+        searchCompany: "Поиск компании...",
+        savedSuccess: "Успешно сохранено",
+
+        //userpermission sehifesi
+        roleNotFound: "Роль не найдена",
+
+        //role umumi
+        permissionManagementDesc: "Управление правами на уровне ролей и пользователей.",
+        rolePermissions: "Права ролей",
+        userPermissions: "Права пользователей",
     },
 };

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { ChevronDown } from "lucide-react";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 type User = {
   user_id: string;
@@ -23,6 +25,9 @@ type Company = {
 };
 
 export default function UserPermissionsPage() {
+
+  const { lang } = useLang();
+const t = translations[lang];
   const [guides, setGuides] = useState<any[]>([]);
 const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -51,15 +56,15 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
 
   const sidebarGroups = [
     {
-    title: "Dashboard",
+    title: t.dashboard,
     permissions: ["dashboard.view"],
   },
     {
-      title: "İşçilər",
+      title: t.employees,
       permissions: ["employees.view", "employees.create"],
     },
     {
-      title: "Struktur",
+      title: t.structure,
       permissions: [
         "companies.view",
         "departments.view",
@@ -68,14 +73,14 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
       ],
     },
      {
-      title: "Tapşırıqlar",
+      title: t.tasks,
       permissions: [
         "tasks.view",
         "tasks.create",
       ],
     },
     {
-  title: "Tapşırıq Button Yetkiləri",
+  title:t.taskButtons,
   permissions: [
     // LIST / BOARD BUTTONS
     "tasks.edit.list",
@@ -91,11 +96,11 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   ],
 },
     {
-      title: "Dövrlü Tapşırıqlar",
+      title:t.recurringTasks,
       permissions: ["recurring.view", "recurring.create"],
     },
       {
-  title: "Dövrlü Tapşırıq Button Yetkiləri",
+  title: t.recurringButtons,
   permissions: [
     "recurring.view.button",
     "recurring.pause.button",
@@ -103,11 +108,11 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   ],
 },
     {
-      title: "Yetkilər",
+      title: t.permissions,
       permissions: ["role_permissions.view"],
     },
     {
-      title: "Parametrlər",
+      title: t.settings,
       permissions: ["settings.view"],
     },
   ];
@@ -251,11 +256,6 @@ if (guideIds.length === 0) {
   setLoading(false);
 }
 
-
-
-
-
-
   /* ================= FINAL PERMISSIONS ================= */
 
   const finalPerms = useMemo(() => {
@@ -336,7 +336,7 @@ if (guideIds.length === 0) {
 const roleId = user?.role_id;
 
 if (!roleId) {
-  alert("Role tapılmadı");
+  alert(t.roleNotFound);
   setLoading(false);
   return;
 }
@@ -404,7 +404,7 @@ if (selectedGuides.length > 0) {
       await supabase.from("user_company_access").insert(companyRows);
     }
 
-    alert("User permissions + company access saved ✅");
+   alert(t.savedSuccess + " ✅");
     setLoading(false);
   }
 
@@ -423,7 +423,7 @@ if (selectedGuides.length > 0) {
     <div style={{ padding: 28, maxWidth: 900 }}>
       {/* USER SELECT */}
       <div style={{ ...card, marginTop: 20 }}>
-        <b>User seç</b>
+        <b>{t.selectUser}</b>
 
         <select
           value={selectedUserId}
@@ -450,7 +450,7 @@ if (selectedGuides.length > 0) {
       cursor: "pointer",
     }}
   >
-    <b>📌 Əsas Yetkilər</b>
+    <b>📌 {t.permissions}</b>
     <ChevronDown
       size={18}
       style={{
@@ -575,7 +575,7 @@ if (selectedGuides.length > 0) {
             cursor: "pointer",
           }}
         >
-          <b>🏢 Şirkət Yetkiləri</b>
+          <b>🏢 {t.companyPermissions}</b>
           <ChevronDown
             size={18}
             style={{
@@ -590,7 +590,7 @@ if (selectedGuides.length > 0) {
         {isCompaniesOpen && (
           <>
             <input
-              placeholder="🔍 Şirkət axtar..."
+              placeholder={`🔍 ${t.searchCompany}`}
               value={companySearch}
               onChange={(e) => setCompanySearch(e.target.value)}
               style={{ ...input, marginTop: 12 }}
@@ -637,7 +637,7 @@ if (selectedGuides.length > 0) {
       {/* ================= REHBER YETKILERI ================= */}
 
 <div style={{ ...card, marginTop: 24 }}>
-  <b>👨‍💼 Rehber Yetkiləri</b>
+  <b>👨‍💼 {t.guidePermissions}</b>
 
   <div style={{ marginTop: 16 }}>
     {guides.map((g) => {
@@ -682,7 +682,7 @@ if (selectedGuides.length > 0) {
         disabled={loading}
         style={{ ...button, marginTop: 24 }}
       >
-        {loading ? "Saving..." : "💾 Save"}
+        {loading ? t.saving : `💾 ${t.save}`}
       </button>
     </div>
   );

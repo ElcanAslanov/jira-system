@@ -4,18 +4,24 @@ import { useState } from "react";
 import RolePermissionsPage from "./RolePermissionsPage";
 import UserPermissionsPage from "./UserPermissionsPage";
 
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
+
 export default function RolePermissionHub() {
   const [mode, setMode] = useState<"role" | "user">("role");
+
+  const { lang } = useLang();
+  const t = translations[lang];
 
   return (
     <div style={{ padding: 28, maxWidth: 1400, margin: "0 auto" }}>
       
       <h1 style={{ fontSize: 24, fontWeight: 900 }}>
-        🔐 Yetki İdarəsi
+        🔐 {t.permissionManagement}
       </h1>
 
       <p style={{ marginTop: 6, color: "#6b7280", fontSize: 14 }}>
-        Rol və istifadəçi səviyyəsində icazələri idarə et.
+        {t.permissionManagementDesc}
       </p>
 
       {/* Toggle */}
@@ -32,7 +38,7 @@ export default function RolePermissionHub() {
             color: mode === "role" ? "#fff" : "#111827",
           }}
         >
-          Rol Yetkiləri
+          {t.rolePermissions}
         </button>
 
         <button
@@ -47,7 +53,7 @@ export default function RolePermissionHub() {
             color: mode === "user" ? "#fff" : "#111827",
           }}
         >
-          User Yetkiləri
+          {t.userPermissions}
         </button>
       </div>
 

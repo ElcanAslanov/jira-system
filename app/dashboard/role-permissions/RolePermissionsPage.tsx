@@ -3,12 +3,17 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { ChevronDown } from "lucide-react";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 type Role = { id: string; name: string };
 type Perm = { key: string; label: string };
 type Company = { id: number; name: string };
 
 export default function RolePermissionsPage() {
+
+  const { lang } = useLang();
+const t = translations[lang];
   const [guides, setGuides] = useState<any[]>([]);
 const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
 
@@ -42,15 +47,15 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
 
   const sidebarGroups = [
     {
-      title: "Dashboard",
+      title: t.dashboard,
       permissions: ["dashboard.view"],
     },
     {
-      title: "İşçilər",
+      title: t.employees,
       permissions: ["employees.view", "employees.create"],
     },
     {
-      title: "Struktur",
+      title: t.structure,
       permissions: [
         "companies.view",
         "departments.view",
@@ -59,14 +64,14 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
       ],
     },
     {
-      title: "Tapşırıqlar",
+      title: t.tasks,
       permissions: [
         "tasks.view",
         "tasks.create",
       ],
     },
     {
-      title: "Tapşırıq Button Yetkiləri",
+      title: t.taskButtons,
       permissions: [
         // LIST / BOARD BUTTONS
         "tasks.edit.list",
@@ -82,11 +87,11 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
       ],
     },
     {
-      title: "Dövrlü Tapşırıqlar",
+      title: t.recurringTasks,
       permissions: ["recurring.view", "recurring.create"],
     },
     {
-      title: "Dövrlü Tapşırıq Button Yetkiləri",
+      title: t.recurringButtons,
       permissions: [
         "recurring.view.button",
         "recurring.pause.button",
@@ -94,11 +99,11 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
       ],
     },
     {
-      title: "Yetkilər",
+      title: t.permissions,
       permissions: ["role_permissions.view"],
     },
     {
-      title: "Parametrlər",
+      title: t.settings,
       permissions: ["settings.view"],
     },
   ];
@@ -284,7 +289,7 @@ if (selectedGuides.length > 0) {
 }
 
     setLoading(false);
-    alert("Yadda saxlanıldı ✅");
+   alert(t.savedSuccess + " ✅");
   }
 
   /* ================= SEARCH ================= */
@@ -316,7 +321,7 @@ if (selectedGuides.length > 0) {
     <div style={{ maxWidth: 900 }}>
       {/* ROLE SELECT */}
       <div style={card}>
-        <b>Rol seç</b>
+        <b>{t.selectRole}</b>
 
         <select
           value={selectedRole}
@@ -337,7 +342,7 @@ if (selectedGuides.length > 0) {
           onClick={() => setIsPermissionsOpen(!isPermissionsOpen)}
           style={headerStyle}
         >
-          <b>📌 Yetkilər</b>
+          <b>📌 {t.permissions}</b>
           <ChevronDown
             size={18}
             style={{
@@ -350,11 +355,11 @@ if (selectedGuides.length > 0) {
         {isPermissionsOpen && (
           <>
             <span style={counterText}>
-              Seçilən: <b>{selectedPerms.length}</b> / {permissions.length}
+              {t.selected}: <b>{selectedPerms.length}</b> / {permissions.length}
             </span>
 
             <input
-              placeholder="🔍 Axtar..."
+              placeholder={`🔍 ${t.search}`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ ...input, marginTop: 12 }}
@@ -445,7 +450,7 @@ if (selectedGuides.length > 0) {
           onClick={() => setIsCompaniesOpen(!isCompaniesOpen)}
           style={headerStyle}
         >
-          <b>🏢 Şirkət Yetkiləri</b>
+          <b>🏢 {t.companyPermissions}</b>
           <ChevronDown
             size={18}
             style={{
@@ -458,11 +463,11 @@ if (selectedGuides.length > 0) {
         {isCompaniesOpen && (
           <>
             <span style={counterText}>
-              Seçilən: <b>{selectedCompanies.length}</b> / {companies.length}
+              {t.selected}: <b>{selectedCompanies.length}</b> / {companies.length}
             </span>
 
             <input
-              placeholder="🔍 Şirkət axtar..."
+              placeholder={`🔍 ${t.searchCompany}`}
               value={companySearch}
               onChange={(e) => setCompanySearch(e.target.value)}
               style={{ ...input, marginTop: 12 }}
@@ -507,7 +512,7 @@ if (selectedGuides.length > 0) {
       {/* ================= REHBER YETKILERI ================= */}
 
 <div style={{ ...card, marginTop: 24 }}>
-  <b>👨‍💼 Rehber Yetkiləri</b>
+<b>👨‍💼 {t.guidePermissions}</b>
 
   <div style={{ marginTop: 16 }}>
     {guides.map((g) => {
@@ -546,7 +551,7 @@ if (selectedGuides.length > 0) {
         disabled={loading}
         style={{ ...button, marginTop: 24 }}
       >
-        {loading ? "Saving..." : "💾 Save"}
+        {loading ? t.saving : `💾 ${t.save}`}
       </button>
     </div>
   );
