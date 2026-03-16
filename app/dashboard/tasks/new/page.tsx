@@ -25,7 +25,7 @@ export default function CreateTaskPage() {
 
 
   const { lang } = useLang()
-const t = translations[lang]
+  const t = translations[lang]
 
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const router = useRouter();
@@ -109,7 +109,7 @@ const t = translations[lang]
 
     for (const file of selectedFiles) {
       if (!allowedTypes.includes(file.type)) {
-       alert(t.fileTypeError)
+        alert(t.fileTypeError)
         continue;
       }
 
@@ -177,14 +177,20 @@ const t = translations[lang]
 
     if (res.ok) {
       router.push("/dashboard/tasks");
-      router.refresh();
+      // router.refresh();
     } else {
       const data = await res.json();
       alert(data.error);
     }
   };
 
-  if (loading || !user) return null;
+if (loading) {
+  return <div className="p-10">Yüklənir...</div>;
+}
+
+if (!user) {
+  return null;
+}
 
   const priorityStyles: any = {
     LOW: "bg-green-100 text-green-700",
@@ -231,11 +237,11 @@ const t = translations[lang]
                 type="button"
                 onClick={() => setPriority(p)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition ${priority === p
-                    ? priorityStyles[p]
-                    : "bg-gray-100 text-gray-600"
+                  ? priorityStyles[p]
+                  : "bg-gray-100 text-gray-600"
                   }`}
               >
-                {t[p.toLowerCase() as keyof typeof t]}
+                {t[p.toLowerCase() as keyof typeof t] as string}
               </button>
             ))}
           </div>
@@ -267,7 +273,7 @@ const t = translations[lang]
         {/* MULTI ASSIGN */}
         <div ref={dropdownRef} className="relative">
           <label className="text-sm font-medium text-gray-600">
-           {t.assign}
+            {t.assign}
           </label>
 
           <div
@@ -299,8 +305,8 @@ const t = translations[lang]
                   key={emp.id}
                   onClick={() => toggleAssign(emp.id)}
                   className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex justify-between ${assignedTo.includes(emp.id)
-                      ? "bg-blue-50"
-                      : ""
+                    ? "bg-blue-50"
+                    : ""
                     }`}
                 >
                   <span>
@@ -316,26 +322,26 @@ const t = translations[lang]
         </div>
 
         {/* COMMENT TOGGLE */}
-<div className="flex items-center gap-3">
-  <input
-    type="checkbox"
-    id="commentsEnabled"
-    checked={commentsEnabled}
-    onChange={(e) => setCommentsEnabled(e.target.checked)}
-    className="w-4 h-4"
-  />
-  <label
-    htmlFor="commentsEnabled"
-    className="text-sm font-medium text-gray-700 cursor-pointer"
-  >
-    {t.enableComments}
-  </label>
-</div>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="commentsEnabled"
+            checked={commentsEnabled}
+            onChange={(e) => setCommentsEnabled(e.target.checked)}
+            className="w-4 h-4"
+          />
+          <label
+            htmlFor="commentsEnabled"
+            className="text-sm font-medium text-gray-700 cursor-pointer"
+          >
+            {t.enableComments}
+          </label>
+        </div>
 
         {/* FILE ATTACH */}
         <div>
           <label className="text-sm font-medium text-gray-600">
-           {t.attachFile}
+            {t.attachFile}
           </label>
 
           <input

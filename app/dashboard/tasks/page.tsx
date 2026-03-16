@@ -37,6 +37,7 @@ import { createPortal } from "react-dom"
 import Placeholder from "@tiptap/extension-placeholder"
 import { useLang } from "@/context/LanguageContext"
 import { translations } from "@/lib/translations"
+import { useEmployees } from "@/hooks/useEmployees";
 
 
 
@@ -361,7 +362,19 @@ export default function TasksPage() {
   const searchParams = useSearchParams();
   const openTaskId = searchParams.get("open");
   const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
-  const [users, setUsers] = useState<UserInfo[]>([]);
+  // const [users, setUsers] = useState<UserInfo[]>([]);
+  const { employees } = useEmployees();
+
+  const users: UserInfo[] = useMemo(() => {
+  return (employees || []).map((u: any) => ({
+    id: u.id,
+    name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
+    email: u.email ?? null,
+    role: u.positions?.name ?? null,
+    company: u.companies?.name ?? null,
+    department: u.departments?.name ?? null,
+  }));
+}, [employees]);
 
   const STATUS_LABELS: Record<Status, string> = {
     TODO: t.todo,
@@ -682,34 +695,7 @@ const editor = useEditor(
     setTasksBy(groupByStatus(tasks));
   }, [getToken]);
 
-  const loadUsers = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
-
-    const res = await fetch("/api/admin/employees", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!res.ok) return;
-
-    const data = await res.json();
-
-    // ad + soyad birləşdir
-    const mapped =
-      (data.employees || []).map((u: any) => ({
-        id: u.id,
-        name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
-        email: u.email ?? null,
-
-        role: u.positions?.name ?? null,
-        company: u.companies?.name ?? null,
-        department: u.departments?.name ?? null,
-      })) || [];
-
-    setUsers(mapped);
-  }, [getToken]);
+ 
 
 
 
@@ -805,12 +791,11 @@ const editor = useEditor(
     [getToken, user?.id, user]
   );
 
-  useEffect(() => {
-    if (!loading && user) {
-      loadTasks();
-      loadUsers();
-    }
-  }, [loading, user?.id]);
+ useEffect(() => {
+  if (!loading && user) {
+    loadTasks();
+  }
+}, [loading, user?.id]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -1326,6 +1311,7 @@ const editor = useEditor(
                   users={users}   // BUNU ƏLAVƏ ET
                   updateTask={updateTask}
                   loadTasks={loadTasks}
+                   isMobile={isMobile}
                   moveTask={moveTask}
                   onSelect={(task) => {
                     setViewTask(task);
@@ -2728,7 +2714,8 @@ function Column({
   loadTasks,
   moveTask,
   users,
-  statusLabels
+  statusLabels,
+  isMobile
 }: {
   id: Status;
   title: string;
@@ -2742,7 +2729,7 @@ function Column({
   moveTask: (taskId: string, nextStatus: Status) => void;
   users: UserInfo[];
   statusLabels: Record<Status, string>;
-
+  isMobile:boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isCancelledLocked =
@@ -2807,7 +2794,7 @@ function Column({
               // loadTasks={loadTasks}
               moveTask={moveTask}   // 👈 əlavə et
               users={users}
-              isMobile={window.innerWidth < 1024}
+              isMobile={isMobile}
             />
           ))}
         </div>
@@ -2905,7 +2892,7 @@ const TaskCard = React.memo(function TaskCard({
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: (!can("tasks.edit.list")) || isDone || window.innerWidth < 1024,
+    disabled: (!can("tasks.edit.list")) || isDone || isMobile,
   });
 
   const isAssignedUser =
@@ -2935,7 +2922,7 @@ const TaskCard = React.memo(function TaskCard({
         opacity: isDragging ? 0.6 : isDone ? 0.7 : 1,
       }}
       {...attributes}
-      {...(!isDone && window.innerWidth >= 1024 ? listeners : {})}
+      {...(!isDone && !isMobile ? listeners : {})}
       className={`
       ${bgColor}
       p-4

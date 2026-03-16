@@ -134,7 +134,7 @@ export default function NotificationBell() {
           <div className="px-4 py-3 border-b font-semibold text-gray-700 flex justify-between">
             <span>Bildirişlər</span>
             <span className="text-xs text-gray-400">
-              {unread} oxunmamış
+              {unread} unread
             </span>
           </div>
 

@@ -13,7 +13,7 @@ type Option = {
 export default function NewEmployeePage() {
 
   const { lang } = useLang();
-  const t = translations[lang];
+const t = translations[lang];
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -48,28 +48,28 @@ export default function NewEmployeePage() {
   );
 
   const [hasGuide, setHasGuide] = useState(false);
-  const [selectedGuides, setSelectedGuides] = useState<Option[]>([]);
-  const [guideSearch, setGuideSearch] = useState("");
-  const [guideOpen, setGuideOpen] = useState(false);
+const [selectedGuides, setSelectedGuides] = useState<Option[]>([]);
+const [guideSearch, setGuideSearch] = useState("");
+const [guideOpen, setGuideOpen] = useState(false);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        guideRef.current &&
-        !guideRef.current.contains(event.target as Node)
-      ) {
-        setGuideOpen(false);
-      }
+useEffect(() => {
+  function handleClickOutside(event: MouseEvent) {
+    if (
+      guideRef.current &&
+      !guideRef.current.contains(event.target as Node)
+    ) {
+      setGuideOpen(false);
     }
+  }
 
-    if (guideOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+  if (guideOpen) {
+    document.addEventListener("mousedown", handleClickOutside);
+  }
 
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [guideOpen]);
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, [guideOpen]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -83,10 +83,10 @@ export default function NewEmployeePage() {
     const formData = new FormData(form);
 
     if (hasGuide && selectedGuides.length > 0) {
-      selectedGuides.forEach((g) => {
-        formData.append("guide_ids", g.id);
-      });
-    }
+  selectedGuides.forEach((g) => {
+    formData.append("guide_ids", g.id);
+  });
+}
 
     try {
       const res = await fetch("/api/employees/create", {
@@ -124,7 +124,7 @@ export default function NewEmployeePage() {
       </h1>
 
       <p style={{ marginTop: 4, color: "#6b7280", fontSize: 14 }}>
-        {t.addEmployeeDesc}
+         {t.addEmployeeDesc}
       </p>
 
       <div style={{ marginTop: 18, ...card }}>
@@ -201,11 +201,11 @@ export default function NewEmployeePage() {
                     background: !selectedCompany ? "#f3f4f6" : "#fff",
                   }}
                 >
-                  <option value="">
-                    {selectedCompany
-                      ? t.selectDepartment
-                      : t.selectCompanyFirst}
-                  </option>
+                 <option value="">
+  {selectedCompany
+    ? t.selectDepartment
+    : t.selectCompanyFirst}
+</option>
                   {filteredDepartments.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
@@ -236,138 +236,138 @@ export default function NewEmployeePage() {
                 </select>
               </Field>
 
-              <Field label={t.addGuide}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <input
-                    type="checkbox"
-                    checked={hasGuide}
-                    onChange={(e) => {
-                      setHasGuide(e.target.checked);
-                      if (!e.target.checked) {
-                        setSelectedGuides([]);
-                        setGuideOpen(false);
+             <Field label={t.addGuide}>
+  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <input
+      type="checkbox"
+      checked={hasGuide}
+      onChange={(e) => {
+        setHasGuide(e.target.checked);
+        if (!e.target.checked) {
+          setSelectedGuides([]);
+          setGuideOpen(false);
+        }
+      }}
+    />
+    <span style={{ fontSize: 14, fontWeight: 700 }}>
+      {t.wantGuide}
+    </span>
+  </div>
+</Field>
+
+{hasGuide && (
+ <div
+  ref={guideRef}
+  style={{
+    gridColumn: "1 / -1",
+    position: "relative",
+    overflow: "visible",
+  }}
+>
+    <Field label={t.selectGuide}>
+      {/* Selected chips */}
+      {selectedGuides.length > 0 && (
+        <div style={chipWrap}>
+          {selectedGuides.map((g) => (
+            <div key={g.id} style={chip}>
+              <span>{g.name}</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedGuides(
+                    selectedGuides.filter((x) => x.id !== g.id)
+                  )
+                }
+                style={chipBtn}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Dropdown trigger */}
+      <div
+        onClick={() => setGuideOpen((p) => !p)}
+        style={{
+          ...input,
+          cursor: "pointer",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontWeight: 800,
+          border: guideOpen ? "2px solid #2563eb" : "1px solid #d1d5db",
+          background: guideOpen ? "#eff6ff" : "#fff",
+        }}
+      >
+       <span>
+  {selectedGuides.length
+    ? `${selectedGuides.length} ${t.guidesSelected}`
+    : t.selectGuide}
+</span>
+        <span style={{ color: "#2563eb", fontWeight: 900 }}>
+          {guideOpen ? "▲" : "▼"}
+        </span>
+      </div>
+
+      {guideOpen && (
+        <div style={dropdownBox}>
+          <div style={searchWrap}>
+            <input
+              value={guideSearch}
+              onChange={(e) => setGuideSearch(e.target.value)}
+              placeholder={t.search}
+              style={searchInput}
+              autoFocus
+            />
+          </div>
+
+          <div style={listWrap}>
+            {guides
+              .filter((g) =>
+                g.name.toLowerCase().includes(guideSearch.toLowerCase())
+              )
+              .map((g) => {
+                const selected = selectedGuides.some(
+                  (x) => x.id === g.id
+                );
+
+                return (
+                  <div
+                    key={g.id}
+                    onClick={() => {
+                      if (selected) {
+                        setSelectedGuides(
+                          selectedGuides.filter((x) => x.id !== g.id)
+                        );
+                      } else {
+                        setSelectedGuides([...selectedGuides, g]);
                       }
                     }}
-                  />
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>
-                    {t.wantGuide}
-                  </span>
-                </div>
-              </Field>
-
-              {hasGuide && (
-                <div
-                  ref={guideRef}
-                  style={{
-                    gridColumn: "1 / -1",
-                    position: "relative",
-                    overflow: "visible",
-                  }}
-                >
-                  <Field label={t.selectGuide}>
-                    {/* Selected chips */}
-                    {selectedGuides.length > 0 && (
-                      <div style={chipWrap}>
-                        {selectedGuides.map((g) => (
-                          <div key={g.id} style={chip}>
-                            <span>{g.name}</span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedGuides(
-                                  selectedGuides.filter((x) => x.id !== g.id)
-                                )
-                              }
-                              style={chipBtn}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Dropdown trigger */}
-                    <div
-                      onClick={() => setGuideOpen((p) => !p)}
-                      style={{
-                        ...input,
-                        cursor: "pointer",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontWeight: 800,
-                        border: guideOpen ? "2px solid #2563eb" : "1px solid #d1d5db",
-                        background: guideOpen ? "#eff6ff" : "#fff",
-                      }}
-                    >
-                      <span>
-                        {selectedGuides.length
-                          ? `${selectedGuides.length} ${t.guidesSelected}`
-                          : t.selectGuide}
-                      </span>
-                      <span style={{ color: "#2563eb", fontWeight: 900 }}>
-                        {guideOpen ? "▲" : "▼"}
-                      </span>
+                    style={{
+                      ...listItem,
+                      background: selected ? "#eff6ff" : "#fff",
+                      borderLeft: selected
+                        ? "4px solid #2563eb"
+                        : "4px solid transparent",
+                    }}
+                  >
+                    <div style={checkboxUI}>
+                      {selected ? "✓" : ""}
                     </div>
-
-                    {guideOpen && (
-                      <div style={dropdownBox}>
-                        <div style={searchWrap}>
-                          <input
-                            value={guideSearch}
-                            onChange={(e) => setGuideSearch(e.target.value)}
-                            placeholder={t.search}
-                            style={searchInput}
-                            autoFocus
-                          />
-                        </div>
-
-                        <div style={listWrap}>
-                          {guides
-                            .filter((g) =>
-                              g.name.toLowerCase().includes(guideSearch.toLowerCase())
-                            )
-                            .map((g) => {
-                              const selected = selectedGuides.some(
-                                (x) => x.id === g.id
-                              );
-
-                              return (
-                                <div
-                                  key={g.id}
-                                  onClick={() => {
-                                    if (selected) {
-                                      setSelectedGuides(
-                                        selectedGuides.filter((x) => x.id !== g.id)
-                                      );
-                                    } else {
-                                      setSelectedGuides([...selectedGuides, g]);
-                                    }
-                                  }}
-                                  style={{
-                                    ...listItem,
-                                    background: selected ? "#eff6ff" : "#fff",
-                                    borderLeft: selected
-                                      ? "4px solid #2563eb"
-                                      : "4px solid transparent",
-                                  }}
-                                >
-                                  <div style={checkboxUI}>
-                                    {selected ? "✓" : ""}
-                                  </div>
-                                  <div style={{ fontWeight: 800 }}>
-                                    {g.name}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                  </Field>
-                </div>
-              )}
+                    <div style={{ fontWeight: 800 }}>
+                      {g.name}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+    </Field>
+  </div>
+)}
             </div>
 
             <button

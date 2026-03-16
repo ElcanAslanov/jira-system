@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useUser } from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 
 type Rule = {
@@ -30,10 +32,7 @@ type Employee = {
 
 function formatDMY(date: string | null) {
   if (!date) return "-";
-  const d = new Date(date);
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
+  const [year, month, day] = date.split("-");
   return `${day}/${month}/${year}`;
 }
 
@@ -61,14 +60,17 @@ function DrawerRow({ label, value }: { label: string; value: any }) {
   );
 }
 
-function translateFrequency(freq: string) {
-  if (freq === "DAILY") return "Gündəlik";
-  if (freq === "WEEKLY") return "Həftəlik";
-  if (freq === "MONTHLY") return "Aylıq";
+function translateFrequency(freq: string, t: any) {
+  if (freq === "DAILY") return t.daily;
+  if (freq === "WEEKLY") return t.weekly;
+  if (freq === "MONTHLY") return t.monthly;
   return freq;
 }
 
 export default function RecurringPage() {
+
+  const { lang } = useLang();
+  const t = translations[lang];
   const [viewRule, setViewRule] = useState<Rule | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -142,17 +144,22 @@ export default function RecurringPage() {
 
   /* ================= ACTIONS ================= */
 
-  const toggleActive = async (rule: Rule) => {
-    await supabase
-      .from("recurring_rules")
-      .update({ is_active: !rule.is_active })
-      .eq("id", rule.id);
+const toggleActive = async (rule: Rule) => {
+  const { error } = await supabase
+    .from("recurring_rules")
+    .update({ is_active: !rule.is_active })
+    .eq("id", rule.id);
 
-    loadData();
-  };
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  loadData();
+};
 
   const deleteRule = async (id: string) => {
-    if (!confirm("Bu dövrlü tapşırıq silinsin?")) return;
+    if (!confirm(t.confirmDeleteRecurring)) return;
 
     await supabase.from("recurring_rules").delete().eq("id", id);
 
@@ -175,21 +182,27 @@ export default function RecurringPage() {
     setTimeout(() => setViewRule(null), 220);
   };
 
-  if (loading || !user) return null;
+if (loading) {
+  return <div className="p-10">Yüklənir...</div>;
+}
+
+if (!user) {
+  return null;
+}
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-sm p-4 sm:p-6">
         {/* HEADER */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-          <h1 className="text-xl sm:text-2xl font-bold">🌀 Dövrlü Tapşırıqlar</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">🌀 {t.recurringTasks}</h1>
 
         </div>
 
         {loadingData ? (
-          <div>Yüklənir...</div>
+          <div>{t.loading}</div>
         ) : rules.length === 0 ? (
-          <div className="text-gray-500">Dövrlü tapşırıq yoxdur.</div>
+          <div className="text-gray-500">{t.noRecurringTasks}</div>
         ) : (
           <>
             {/* ================= DESKTOP/TABLE (lg+) ================= */}
@@ -197,17 +210,17 @@ export default function RecurringPage() {
               <table className="w-full text-sm border rounded-xl overflow-hidden">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="p-3 text-left">Ad</th>
-                    <th className="p-3 text-left">Tezlik</th>
-                    <th className="p-3 text-left">İnterval</th>
-                    <th className="p-3 text-left">Həftənin günləri</th>
-                    <th className="p-3 text-left">Başlama</th>
-                    <th className="p-3 text-left">Bitmə</th>
-                    <th className="p-3 text-left">Növbəti</th>
-                    <th className="p-3 text-left">Təyin edilənlər</th>
-                    <th className="p-3 text-left">Fayl</th>
-                    <th className="p-3 text-left">Status</th>
-                    <th className="p-3 text-right">Əməliyyat</th>
+                    <th className="p-3 text-left">{t.name}</th>
+                    <th className="p-3 text-left">{t.frequency}</th>
+                    <th className="p-3 text-left">{t.interval}</th>
+                    <th className="p-3 text-left">{t.weekDays}</th>
+                    <th className="p-3 text-left">{t.start}</th>
+                    <th className="p-3 text-left">{t.end}</th>
+                    <th className="p-3 text-left">{t.nextRun}</th>
+                    <th className="p-3 text-left">{t.assignedTo}</th>
+                    <th className="p-3 text-left">{t.file}</th>
+                    <th className="p-3 text-left">{t.status}</th>
+                    <th className="p-3 text-right">{t.actions}</th>
                   </tr>
                 </thead>
 
@@ -216,32 +229,20 @@ export default function RecurringPage() {
                     <tr key={r.id} className="border-t hover:bg-gray-50">
                       <td className="p-3 font-medium">{r.title}</td>
 
-                      <td className="p-3">{translateFrequency(r.frequency)}</td>
+                      <td className="p-3">{translateFrequency(r.frequency, t)}</td>
 
                       <td className="p-3">{r.interval}</td>
                       <td className="p-3">
                         {r.frequency === "WEEKLY" && r.week_days?.length ? (
                           <div className="flex flex-wrap gap-1">
-                            {r.week_days.map((d) => {
-                              const map: Record<number, string> = {
-                                1: "B.e",
-                                2: "Ç.a",
-                                3: "Ç",
-                                4: "C.a",
-                                5: "C",
-                                6: "Ş",
-                                0: "B",
-                              };
-
-                              return (
-                                <span
-                                  key={d}
-                                  className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs"
-                                >
-                                  {map[d]}
-                                </span>
-                              );
-                            })}
+                            {r.week_days.map((d) => (
+                              <span
+                                key={d}
+                                className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs"
+                              >
+                                {t.weekDaysShort[d as keyof typeof t.weekDaysShort]}
+                              </span>
+                            ))}
                           </div>
                         ) : (
                           "-"
@@ -280,7 +281,7 @@ export default function RecurringPage() {
                             onClick={() => openDrawer(r)}
                             className="text-indigo-600 text-xs hover:underline"
                           >
-                            📎 {r.files.length} fayl
+                            📎 {r.files.length} {t.file}
                           </button>
                         ) : (
                           "-"
@@ -290,12 +291,12 @@ export default function RecurringPage() {
                       {/* STATUS */}
                       <td className="p-3">
                         {r.is_active ? (
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
-                            Aktiv
+                          <span className="...">
+                            {t.active}
                           </span>
                         ) : (
-                          <span className="px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-600">
-                            Dayandırılıb
+                          <span className="...">
+                            {t.paused}
                           </span>
                         )}
                       </td>
@@ -308,7 +309,7 @@ export default function RecurringPage() {
                             onClick={() => openDrawer(r)}
                             className="border px-3 py-1.5 rounded-lg text-xs"
                           >
-                            Bax
+                            {t.view}
                           </button>
                         )}
 
@@ -317,7 +318,7 @@ export default function RecurringPage() {
                             onClick={() => toggleActive(r)}
                             className="border px-3 py-1.5 rounded-lg text-xs"
                           >
-                            {r.is_active ? "Pause" : "Resume"}
+                            {r.is_active ? t.pause : t.resume}
                           </button>
                         )}
 
@@ -326,7 +327,7 @@ export default function RecurringPage() {
                             onClick={() => deleteRule(r.id)}
                             className="border px-3 py-1.5 rounded-lg text-xs text-red-600 border-red-200"
                           >
-                            Sil
+                            {t.delete}
                           </button>
                         )}
 
@@ -348,18 +349,18 @@ export default function RecurringPage() {
                     <div className="min-w-0">
                       <div className="font-bold text-base truncate">{r.title}</div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {translateFrequency(r.frequency)} • interval: {r.interval}
+                        {translateFrequency(r.frequency, t)} • {t.interval}: {r.interval}
                       </div>
                     </div>
 
                     <div className="shrink-0">
                       {r.is_active ? (
                         <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
-                          Aktiv
+                          {t.active}
                         </span>
                       ) : (
                         <span className="px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-600">
-                          Dayandırılıb
+                          {t.paused}
                         </span>
                       )}
                     </div>
@@ -367,29 +368,29 @@ export default function RecurringPage() {
 
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                      <div className="font-extrabold text-gray-700">Başlama</div>
+                      <div className="font-extrabold text-gray-700">{t.start}</div>
                       <div className="font-semibold mt-1">{formatDMY(r.start_date)}</div>
                     </div>
 
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                      <div className="font-extrabold text-gray-700">Bitmə</div>
+                      <div className="font-extrabold text-gray-700">{t.end}</div>
                       <div className="font-semibold mt-1">{formatDMY(r.end_date)}</div>
                     </div>
 
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                      <div className="font-extrabold text-gray-700">Növbəti</div>
+                      <div className="font-extrabold text-gray-700">{t.nextRun}</div>
                       <div className="font-semibold mt-1">{formatDMY(r.next_run_date)}</div>
                     </div>
 
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                      <div className="font-extrabold text-gray-700">Fayl</div>
+                      <div className="font-extrabold text-gray-700">{t.file}</div>
                       <div className="font-semibold mt-1">
                         {r.files && r.files.length > 0 ? (
                           <button
                             onClick={() => openDrawer(r)}
                             className="text-indigo-600 hover:underline"
                           >
-                            📎 {r.files.length} fayl
+                            📎 {r.files.length} {t.file}
                           </button>
                         ) : (
                           "-"
@@ -401,7 +402,7 @@ export default function RecurringPage() {
                   {/* Assigned */}
                   <div className="mt-3">
                     <div className="text-xs font-extrabold text-gray-700 mb-2">
-                      Təyin edilənlər
+                      {t.assignedTo}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {r.assigned_to?.length ? (
@@ -431,7 +432,7 @@ export default function RecurringPage() {
                         onClick={() => openDrawer(r)}
                         className="border px-3 py-2 rounded-xl text-xs w-full sm:w-auto"
                       >
-                        Bax
+                        {t.view}
                       </button>
                     )}
 
@@ -440,7 +441,7 @@ export default function RecurringPage() {
                         onClick={() => toggleActive(r)}
                         className="border px-3 py-2 rounded-xl text-xs w-full sm:w-auto"
                       >
-                        {r.is_active ? "Pause" : "Resume"}
+                        {r.is_active ? t.pause : t.resume}
                       </button>
                     )}
 
@@ -449,7 +450,7 @@ export default function RecurringPage() {
                         onClick={() => deleteRule(r.id)}
                         className="border px-3 py-2 rounded-xl text-xs text-red-600 border-red-200 w-full sm:w-auto"
                       >
-                        Sil
+                        {t.delete}
                       </button>
                     )}
 
@@ -492,44 +493,33 @@ export default function RecurringPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <h2 style={{ fontSize: 18, fontWeight: 800 }}>🌀 Dövrlü tapşırıq</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 800 }}>🌀 {t.recurringTask}</h2>
               <button onClick={closeDrawer}>✖</button>
             </div>
 
             <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
-              <DrawerRow label="Ad" value={viewRule.title} />
+              <DrawerRow label={t.name} value={viewRule.title} />
 
               <DrawerRow
-                label="Tezlik"
-                value={translateFrequency(viewRule.frequency)}
+                label={t.frequency}
+                value={translateFrequency(viewRule.frequency, t)}
               />
 
-              <DrawerRow label="İnterval" value={viewRule.interval} />
+              <DrawerRow label={t.interval} value={viewRule.interval} />
 
               <DrawerRow
-                label="Həftənin günləri"
+                label={t.weekDays}
                 value={
                   viewRule.frequency === "WEEKLY" && viewRule.week_days?.length ? (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {viewRule.week_days.map((d) => {
-                        const map: Record<number, string> = {
-                          1: "B.e",
-                          2: "Ç.a",
-                          3: "Ç",
-                          4: "C.a",
-                          5: "C",
-                          6: "Ş",
-                          0: "B",
-                        };
-                        return (
-                          <span
-                            key={d}
-                            className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs"
-                          >
-                            {map[d]}
-                          </span>
-                        );
-                      })}
+                      {viewRule.week_days.map((d) => (
+                        <span
+                          key={d}
+                          className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs"
+                        >
+                          {t.weekDaysShort[d as keyof typeof t.weekDaysShort]}
+                        </span>
+                      ))}
                     </div>
                   ) : (
                     "-"
@@ -538,23 +528,23 @@ export default function RecurringPage() {
               />
 
               <DrawerRow
-                label="Başlama"
+                label={t.start}
                 value={formatDMY(viewRule.start_date)}
               />
 
               <DrawerRow
-                label="Bitmə"
+                label={t.end}
                 value={formatDMY(viewRule.end_date)}
               />
 
               <DrawerRow
-                label="Növbəti icra"
+                label={t.nextRun}
                 value={formatDMY(viewRule.next_run_date)}
               />
 
               {/* Assigned in drawer (extra, does not remove anything) */}
               <DrawerRow
-                label="Təyin edilənlər"
+                label={t.assignedTo}
                 value={
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {viewRule.assigned_to?.length ? (
@@ -579,7 +569,7 @@ export default function RecurringPage() {
 
               {viewRule.files?.length ? (
                 <DrawerRow
-                  label="Fayllar"
+                  label={t.files}
                   value={
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {viewRule.files.map((f: any, i: number) => (

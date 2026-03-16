@@ -7,6 +7,8 @@ import { useUser } from "@/hooks/useUser";
 import { DatePicker, Tooltip } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useLang } from "@/context/LanguageContext";
+import { translations } from "@/lib/translations";
 
 const { RangePicker } = DatePicker;
 
@@ -17,16 +19,20 @@ type Employee = {
 };
 
 const WEEK_DAYS = [
-    { label: "B.e", value: 1 },
-    { label: "Ç.a", value: 2 },
-    { label: "Ç", value: 3 },
-    { label: "C.a", value: 4 },
-    { label: "C", value: 5 },
-    { label: "Ş", value: 6 },
-    { label: "B", value: 0 },
+    { value: 1 },
+    { value: 2 },
+    { value: 3 },
+    { value: 4 },
+    { value: 5 },
+    { value: 6 },
+    { value: 0 },
 ];
 
 export default function NewRecurringPage() {
+
+    const { lang } = useLang();
+    const t = translations[lang];
+
     const router = useRouter();
     const { user, loading } = useUser();
 
@@ -117,17 +123,17 @@ export default function NewRecurringPage() {
 
         for (const file of selectedFiles) {
             if (!allowedTypes.includes(file.type)) {
-                alert("Yalnız PDF, Excel, Word, JPG və PNG icazəlidir");
+                alert(t.fileTypeError);
                 continue;
             }
 
             if (file.size > maxSize) {
-                alert(`${file.name} 20MB-dan böyükdür`);
+                alert(`${file.name} ${t.fileTooLarge}`);
                 continue;
             }
 
             if (currentFiles.length >= maxFiles) {
-                alert("Maksimum 20 fayl əlavə edə bilərsiniz");
+                alert(t.maxFilesError);
                 break;
             }
 
@@ -143,111 +149,136 @@ export default function NewRecurringPage() {
 
     /* ================= CREATE RULE ================= */
 
-   const createRule = async () => {
-    if (!title.trim()) return alert("Title tələb olunur");
-    if (!startDate || !endDate)
-        return alert("Start və End tarixi seçilməlidir");
-    if (startDate > endDate)
-        return alert("Start date end-dən böyük ola bilməz");
+    const createRule = async () => {
+        if (!title.trim()) return alert(t.titleRequired);
+        if (!startDate || !endDate)
+            return alert(t.startEndRequired);
+        if (startDate > endDate)
+            return alert(t.startGreaterError);
 
-    if (frequency === "WEEKLY" && weekDays.length === 0)
-        return alert("Həftəlik üçün ən azı 1 gün seçilməlidir");
+        if (frequency === "WEEKLY" && weekDays.length === 0)
+            return alert(t.weeklyDayRequired);
 
-    let uploadedFiles: any[] = [];
+        let uploadedFiles: any[] = [];
 
-    for (const file of files) {
-        const fileName = `${Date.now()}-${file.name}`;
+        for (const file of files) {
+            const fileName = `${Date.now()}-${file.name}`;
 
-        const { error } = await supabase.storage
-            .from("task-files")
-            .upload(fileName, file);
+            const { error } = await supabase.storage
+                .from("task-files")
+                .upload(fileName, file);
 
-        if (!error) {
-            uploadedFiles.push({
-                name: file.name,
-                path: fileName,
-                size: file.size,
-            });
+            if (!error) {
+                uploadedFiles.push({
+                    name: file.name,
+                    path: fileName,
+                    size: file.size,
+                });
+            }
         }
-    }
 
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id;
 
-    /* employee id tapırıq (tasks.created_by üçün lazımdır) */
-    const { data: employee, error: empError } = await supabase
-        .from("employees")
-        .select("id")
-        .eq("user_id", userId)
-        .single();
+        /* employee id tapırıq (tasks.created_by üçün lazımdır) */
+        const { data: employee, error: empError } = await supabase
+            .from("employees")
+            .select("id")
+            .eq("user_id", userId)
+            .single();
 
-    if (empError || !employee) {
-        alert("Employee tapılmadı");
-        return;
-    }
+        if (empError || !employee) {
+            alert(t.employeeNotFoundError);
+            return;
+        }
+        let nextRunDate = startDate;
 
-    /* recurring rule yaradırıq */
-    const { data: rule, error } = await supabase
-        .from("recurring_rules")
-        .insert({
-            title: title.trim(),
-            description,
-            frequency,
-            interval,
-            priority,
-            assigned_to: assignedTo,
-            week_days: frequency === "WEEKLY" ? weekDays : null,
-            files: uploadedFiles,
-            start_date: startDate,
-            end_date: endDate,
-            next_run_date: startDate,
-            is_active: true,
-            created_by: employee.id,
-        })
-        .select()
-        .single();
+        if (frequency === "WEEKLY" && weekDays.length > 0) {
+            const start = dayjs(startDate);
+            const startWeekday = start.day();
 
-    if (error) {
-        alert(error.message);
-        return;
-    }
+            let minDiff = 7;
 
-    /* əgər start date bu gündürsə ilk taskı dərhal yaradırıq */
-    const today = dayjs().format("YYYY-MM-DD");
+            for (const d of weekDays) {
+                let diff = d - startWeekday;
 
-    if (startDate === today) {
-        const { error: taskError } = await supabase
-            .from("tasks")
+                if (diff <= 0) diff += 7;
+
+                if (diff < minDiff) {
+                    minDiff = diff;
+                }
+            }
+
+            nextRunDate = start.add(minDiff, "day").format("YYYY-MM-DD");
+        }
+        /* recurring rule yaradırıq */
+        const { data: rule, error } = await supabase
+            .from("recurring_rules")
             .insert({
                 title: title.trim(),
                 description,
+                frequency,
+                interval,
                 priority,
-                due_date: startDate,
-                status: "TODO",
-                created_by: employee.id,
-            });
+                assigned_to: assignedTo,
+                week_days: frequency === "WEEKLY" ? weekDays.map(Number) : null,
+                files: uploadedFiles,
+                start_date: startDate,
+                end_date: endDate,
+                next_run_date: nextRunDate,
+                is_active: true,
+                created_by: userId
+            })
+            .select()
+            .single();
 
-        if (taskError) {
-            console.log("TASK ERROR:", taskError);
+        if (error) {
+            alert(error.message);
+            return;
         }
-    }
 
-    router.push("/dashboard/recurring");
-};
+        /* əgər start date bu gündürsə ilk taskı dərhal yaradırıq */
+        // const today = dayjs().format("YYYY-MM-DD");
 
-    if (loading || !user) return null;
+        // if (startDate === today) {
+        //     const { error: taskError } = await supabase
+        //         .from("tasks")
+        //         .insert({
+        //             title: title.trim(),
+        //             description,
+        //             priority,
+        //             due_date: startDate,
+        //             status: "TODO",
+        //             created_by: employee.id,
+        //         });
+
+        //     if (taskError) {
+        //         console.log("TASK ERROR:", taskError);
+        //     }
+        // }
+
+        router.push("/dashboard/recurring");
+    };
+
+if (loading) {
+  return <div className="p-10">Yüklənir...</div>;
+}
+
+if (!user) {
+  return null;
+}
 
     return (
         <div className="min-h-screen bg-gray-100 p-8">
             <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm p-8 space-y-6">
                 <h1 className="text-2xl font-bold">
-                    🌀 Dövrlü Tapşırıq Əlavə et
+                    🌀 {t.recurringTitle}
                 </h1>
 
                 {/* TITLE */}
                 <div>
                     <label className="text-sm font-medium text-gray-600">
-                        Ad
+                        {t.title}
                     </label>
                     <input
                         className="w-full mt-2 border p-3 rounded-xl"
@@ -259,7 +290,7 @@ export default function NewRecurringPage() {
                 {/* DESCRIPTION */}
                 <div>
                     <label className="text-sm font-medium text-gray-600">
-                        Məzmun
+                        {t.description}
                     </label>
                     <textarea
                         rows={4}
@@ -272,7 +303,7 @@ export default function NewRecurringPage() {
                 {/* FREQUENCY */}
                 <div>
                     <label className="text-sm font-medium text-gray-600">
-                        Tezlik
+                        {t.frequency}
                     </label>
                     <select
                         className="w-full mt-2 border p-3 rounded-xl"
@@ -281,9 +312,9 @@ export default function NewRecurringPage() {
                             setFrequency(e.target.value as any)
                         }
                     >
-                        <option value="DAILY">Gündəlik</option>
-                        <option value="WEEKLY">Həftəlik</option>
-                        <option value="MONTHLY">Aylıq</option>
+                        <option value="DAILY">{t.daily}</option>
+                        <option value="WEEKLY">{t.weekly}</option>
+                        <option value="MONTHLY">{t.monthly}</option>
                     </select>
                 </div>
 
@@ -291,7 +322,7 @@ export default function NewRecurringPage() {
                 {frequency === "WEEKLY" && (
                     <div>
                         <label className="text-sm font-medium text-gray-600">
-                            Həftənin günləri
+                            {t.weekDays}
                         </label>
                         <div className="flex gap-2 mt-2 flex-wrap">
                             {WEEK_DAYS.map((day) => (
@@ -300,11 +331,11 @@ export default function NewRecurringPage() {
                                     type="button"
                                     onClick={() => toggleWeekDay(day.value)}
                                     className={`px-4 py-2 rounded-full text-sm ${weekDays.includes(day.value)
-                                            ? "bg-indigo-600 text-white"
-                                            : "bg-gray-100"
+                                        ? "bg-indigo-600 text-white"
+                                        : "bg-gray-100"
                                         }`}
                                 >
-                                    {day.label}
+                                    {t.weekDaysShort?.[day.value as keyof typeof t.weekDaysShort]}
                                 </button>
                             ))}
                         </div>
@@ -314,16 +345,16 @@ export default function NewRecurringPage() {
                 {/* INTERVAL */}
                 <div>
                     <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
-                        İnterval
+                        {t.interval}
                         <Tooltip
                             placement="right"
                             title={
                                 <div className="text-sm space-y-1">
-                                    <div><b>Gündəlik</b> 1 → hər gün</div>
-                                    <div><b>Gündəlik</b> 2 → hər 2 gündən bir</div>
-                                    <div><b>Həftəlik</b> 1 → hər həftə</div>
-                                    <div><b>Həftəlik</b> 2 → hər 2 həftə</div>
-                                    <div><b>Aylıq</b> 1 → hər ay</div>
+                                    <div><b>{t.daily}</b> 1 → {t.intervalDaily1}</div>
+                                    <div><b>{t.daily}</b> 2 → {t.intervalDaily2}</div>
+                                    <div><b>{t.weekly}</b> 1 → {t.intervalWeekly1}</div>
+                                    <div><b>{t.weekly}</b> 2 → {t.intervalWeekly2}</div>
+                                    <div><b>{t.monthly}</b> 1 → {t.intervalMonthly1}</div>
                                 </div>
                             }
                         >
@@ -337,7 +368,7 @@ export default function NewRecurringPage() {
                         className="w-full mt-2 border p-3 rounded-xl"
                         value={interval}
                         onChange={(e) =>
-                            setInterval(Number(e.target.value))
+                            setInterval(Math.max(1, Number(e.target.value)))
                         }
                     />
                 </div>
@@ -345,17 +376,17 @@ export default function NewRecurringPage() {
                 {/* PRIORITY */}
                 <div>
                     <label className="text-sm font-medium text-gray-600">
-                        Vaciblik dərəcəsi
+                        {t.priorityLevel}
                     </label>
                     <select
                         className="w-full mt-2 border p-3 rounded-xl"
                         value={priority}
                         onChange={(e) => setPriority(e.target.value)}
                     >
-                        <option value="LOW">Low</option>
-                        <option value="MEDIUM">Medium</option>
-                        <option value="HIGH">High</option>
-                        <option value="URGENT">Urgent</option>
+                        <option value="LOW">{t.low}</option>
+                        <option value="MEDIUM">{t.medium}</option>
+                        <option value="HIGH">{t.high}</option>
+                        <option value="URGENT">{t.urgent}</option>
                     </select>
                 </div>
 
@@ -376,7 +407,7 @@ export default function NewRecurringPage() {
                 {/* ASSIGN USERS */}
                 <div ref={dropdownRef}>
                     <label className="text-sm font-medium text-gray-600">
-                        İcraçılar
+                        {t.assignUsers}
                     </label>
 
                     <div
@@ -385,8 +416,8 @@ export default function NewRecurringPage() {
                     >
                         <span className="text-sm text-gray-700">
                             {assignedTo.length === 0
-                                ? "İcraçı seç"
-                                : `${assignedTo.length} nəfər seçilib`}
+                                ? t.selectAssignee
+                                : `${assignedTo.length} ${t.assigneeSelected}`}
                         </span>
                         <span className="text-gray-400 text-xs">
                             ▼
@@ -411,7 +442,7 @@ export default function NewRecurringPage() {
 
                             {employees.length === 0 && (
                                 <div className="p-3 text-sm text-gray-400">
-                                    İşçi tapılmadı
+                                    {t.employeeNotFound}
                                 </div>
                             )}
                         </div>
@@ -421,7 +452,7 @@ export default function NewRecurringPage() {
                 {/* FILE UPLOAD */}
                 <div>
                     <label className="text-sm font-medium text-gray-600">
-                        Fayl əlavə et (PDF, Excel, Word, Şəkil — max 20MB)
+                        {t.attachFile}
                     </label>
 
                     <input
@@ -448,7 +479,7 @@ export default function NewRecurringPage() {
                                             onClick={() => removeFile(i)}
                                             className="text-red-500 text-xs"
                                         >
-                                            Sil
+                                            {t.delete}
                                         </button>
                                     </div>
                                 </div>
@@ -461,7 +492,7 @@ export default function NewRecurringPage() {
                     onClick={createRule}
                     className="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700"
                 >
-                    Yarat
+                    {t.createRecurringTask}
                 </button>
             </div>
         </div>

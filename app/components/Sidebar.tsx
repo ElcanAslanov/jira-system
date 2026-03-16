@@ -147,20 +147,25 @@ export default function Sidebar() {
   ==============================*/
 
   useEffect(() => {
-    if (!user?.id) return;
+   if (!user?.id) {
+  setPermissions([]);
+  return;
+}
 
     let mounted = true;
 
     async function loadPermissions() {
+      if (!user || permissions.length > 0) return;
       try {
+        
         // 🚀 EMPLOYEE-ni tez yüklə
         const { data: employee } = await supabase
           .from("employees")
           .select("ad,soyad,email,role_id")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
-        if (!employee?.role_id || !mounted) return;
+        if (!employee || !mounted) return;
 
         setEmployeeInfo({
           ad: employee.ad,
@@ -217,7 +222,7 @@ export default function Sidebar() {
     return () => {
       mounted = false;
     };
-  }, [user?.id]);
+  }, [user]);
 
   /* =============================
      FILTER GROUPS
@@ -321,6 +326,7 @@ export default function Sidebar() {
                     <Link
                       key={link.href}
                       href={link.href}
+                       prefetch={false}
                       className={`block px-4 py-2 rounded-lg text-sm transition ${isActive
                         ? "bg-[#e42526]/20 text-white"
                         : "text-gray-400 hover:bg-white/5 hover:text-white"

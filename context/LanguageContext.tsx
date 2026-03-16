@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useMemo } from "react";
 
 type Lang = "az" | "en" | "tr" | "ru";
 
@@ -19,23 +19,25 @@ export function LanguageProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [lang, setLang] = useState<Lang>("az");
 
-  // 🔥 load saved language
-  useEffect(() => {
-    const saved = localStorage.getItem("lang") as Lang | null;
-    if (saved) {
-      setLang(saved);
+  const [lang, setLang] = useState<Lang>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("lang") as Lang | null;
+      if (saved) return saved;
     }
-  }, []);
+    return "az";
+  });
 
-  // 🔥 save language when changed
+  // save language
   useEffect(() => {
     localStorage.setItem("lang", lang);
   }, [lang]);
 
+  // 🔥 prevent unnecessary rerenders
+  const value = useMemo(() => ({ lang, setLang }), [lang]);
+
   return (
-    <LanguageContext.Provider value={{ lang, setLang }}>
+    <LanguageContext.Provider value={value}>
       {children}
     </LanguageContext.Provider>
   );

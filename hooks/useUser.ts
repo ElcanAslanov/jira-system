@@ -8,19 +8,22 @@ export function useUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
 
     async function loadUser() {
       try {
+        const {
+          data: { user: authUser },
+          error,
+        } = await supabase.auth.getUser();
 
-        const { data: { session } } = await supabase.auth.getSession();
+        if (!mounted) return;
 
-        if (!session?.user) {
+        if (error || !authUser) {
           setUser(null);
           setLoading(false);
           return;
         }
-
-        const authUser = session.user;
 
         const { data: employee } = await supabase
           .from("employees")
@@ -31,7 +34,9 @@ export function useUser() {
             )
           `)
           .eq("user_id", authUser.id)
-          .maybeSingle(); // 🔥 FIX
+          .maybeSingle();
+
+        if (!mounted) return;
 
         setUser({
           ...authUser,
@@ -41,45 +46,49 @@ export function useUser() {
 
       } catch (err) {
         console.error("useUser error:", err);
-        setUser(null);
+        if (mounted) setUser(null);
       }
 
-      setLoading(false);
+      if (mounted) setLoading(false);
     }
 
     loadUser();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
 
-        if (!session?.user) {
-          setUser(null);
-          return;
-        }
-
-        const authUser = session.user;
-
-        const { data: employee } = await supabase
-          .from("employees")
-          .select(`
-            role_id,
-            roles (
-              name
-            )
-          `)
-          .eq("user_id", authUser.id)
-          .maybeSingle(); // 🔥 FIX
-
-        setUser({
-          ...authUser,
-          role_id: employee?.role_id || null,
-          role: employee?.roles?.[0]?.name || null,
-        });
+      if (!session?.user) {
+        setUser(null);
+        return;
       }
-    );
+
+      const authUser = session.user;
+
+      const { data: employee } = await supabase
+        .from("employees")
+        .select(`
+          role_id,
+          roles (
+            name
+          )
+        `)
+        .eq("user_id", authUser.id)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      setUser({
+        ...authUser,
+        role_id: employee?.role_id || null,
+        role: employee?.roles?.[0]?.name || null,
+      });
+    });
 
     return () => {
-      listener.subscription.unsubscribe();
+      mounted = false;
+      subscription.unsubscribe();
     };
 
   }, []);

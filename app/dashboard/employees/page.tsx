@@ -145,22 +145,14 @@ function EmployeesAdminPageInner() {
     try {
       setLoading(true);
 
-     let token: string | null = null;
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
 
-for (let i = 0; i < 5; i++) {
-  const { data } = await supabase.auth.getSession();
-  token = data?.session?.access_token || null;
-
-  if (token) break;
-
-  await new Promise((r) => setTimeout(r, 200));
-}
-
-if (!token) {
-  console.warn("Token yoxdur");
-  setLoading(false);
-  return;
-}
+      if (!token) {
+        console.warn("Token yoxdur");
+        setLoading(false);
+        return;
+      }
 
       const [empRes, metaRes] = await Promise.all([
         fetch("/api/admin/employees", {
