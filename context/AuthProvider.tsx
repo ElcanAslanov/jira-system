@@ -21,22 +21,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function loadEmployee(authUser: any) {
-    const { data: employee } = await supabase
-      .from("employees")
-      .select(`
-        role_id,
-        roles (
-          name
-        )
-      `)
-      .eq("user_id", authUser.id)
-      .maybeSingle();
+    try {
+      const { data: employee } = await supabase
+        .from("employees")
+        .select(`
+          role_id,
+          roles (
+            name
+          )
+        `)
+        .eq("user_id", authUser.id)
+        .maybeSingle();
 
-    setUser({
-      ...authUser,
-      role_id: employee?.role_id ?? null,
-      role: employee?.roles?.[0]?.name ?? null,
-    });
+      setUser({
+        ...authUser,
+        role_id: employee?.role_id ?? null,
+        role: employee?.roles?.[0]?.name ?? null,
+      });
+    } catch (e) {
+      console.error("loadEmployee error:", e);
+      setUser(authUser); // fallback
+    }
   }
 
   useEffect(() => {
@@ -44,26 +49,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function init() {
       try {
-        const { data } = await supabase.auth.getSession();
-        const session = data?.session;
+        // ✅ ƏN VACİB — getUser istifadə et
+        const { data: userData } = await supabase.auth.getUser();
+        const authUser = userData?.user;
 
         if (!mounted) return;
 
-        if (!session?.user) {
+        if (!authUser) {
           setUser(null);
           setToken(null);
           setLoading(false);
           return;
         }
 
-        setToken(session.access_token);
+        // token ayrıca götürürük
+        const { data: sessionData } = await supabase.auth.getSession();
 
-        await loadEmployee(session.user);
+        setToken(sessionData?.session?.access_token ?? null);
+
+        await loadEmployee(authUser);
 
         setLoading(false);
       } catch (e) {
         console.error("Auth init error:", e);
-        setLoading(false); // 🔥 failsafe
+        setLoading(false);
       }
     }
 
@@ -81,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           setToken(session.access_token);
+
           await loadEmployee(session.user);
         } catch (e) {
           console.error("Auth change error:", e);
@@ -88,11 +98,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    // 🔥 ƏN VACİB FIX — LOADING DONMASIN
+    // 🔥 failsafe — loading donmasın
     const timeout = setTimeout(() => {
-      if (mounted) {
-        setLoading(false);
-      }
+      if (mounted) setLoading(false);
     }, 2000);
 
     return () => {
