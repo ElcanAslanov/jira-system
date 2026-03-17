@@ -5,18 +5,20 @@ import { supabase } from "@/lib/supabaseClient";
 
 type AuthContextType = {
   user: any;
+  token: string | null;
   loading: boolean;
 };
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  token: null,
   loading: true,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
   async function loadEmployee(authUser: any) {
     const { data: employee } = await supabase
       .from("employees")
@@ -40,17 +42,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     async function init() {
-      const { data } = await supabase.auth.getUser();
-
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session;
       if (!mounted) return;
 
-      if (!data?.user) {
+      if (!session?.user) {
         setUser(null);
+        setToken(null);
         setLoading(false);
         return;
       }
 
-      await loadEmployee(data.user);
+      setToken(session.access_token);
+
+      await loadEmployee(session.user);
       setLoading(false);
     }
 
@@ -62,9 +67,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!session?.user) {
           setUser(null);
+          setToken(null);
           return;
         }
 
+        setToken(session.access_token);
         await loadEmployee(session.user);
       }
     );
@@ -76,12 +83,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, token, loading }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useUser() {
+export function useAuth() {
   return useContext(AuthContext);
 }
