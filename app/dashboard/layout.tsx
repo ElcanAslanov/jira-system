@@ -15,14 +15,26 @@ export default function DashboardLayout({
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  /* login redirect */
+  // 🔥 auth check flag (loop-un qarşısını alır)
+  const [checkedAuth, setCheckedAuth] = useState(false);
+
+  // loading bitəndə işə düşür
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading) {
+      setCheckedAuth(true);
+    }
+  }, [loading]);
+
+  // 🔥 redirect logic (loop FIX)
+  useEffect(() => {
+    if (!checkedAuth) return;
+
+    if (!user) {
       router.replace("/login");
     }
-  }, [user, loading, router]);
+  }, [checkedAuth, user, router]);
 
-  /* 🔧 TAB CHANGE FIX */
+  // 🔥 optional refresh listener (səndə var idi)
   useEffect(() => {
     const handleFocusRefresh = () => {
       router.refresh();
@@ -35,8 +47,12 @@ export default function DashboardLayout({
     };
   }, [router]);
 
- 
+  // 🔥 LOADING UI
+  if (!checkedAuth) {
+    return <div className="p-10">Yüklənir...</div>;
+  }
 
+  // 🔥 redirect gedəndə boş qalmasın
   if (!user) {
     return <div className="p-10">Redirect olunur...</div>;
   }
@@ -44,12 +60,12 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-gray-100">
 
-      {/* ================= DESKTOP SIDEBAR ================= */}
+      {/* DESKTOP SIDEBAR */}
       <div className="hidden lg:block fixed top-0 left-0 h-screen w-64 z-40">
         <Sidebar />
       </div>
 
-      {/* ================= MOBILE SIDEBAR ================= */}
+      {/* MOBILE SIDEBAR */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
@@ -63,7 +79,7 @@ export default function DashboardLayout({
         </div>
       )}
 
-      {/* ================= MAIN CONTENT ================= */}
+      {/* MAIN CONTENT */}
       <div className="flex flex-col min-h-screen lg:ml-64">
 
         {/* MOBILE MENU BUTTON */}
