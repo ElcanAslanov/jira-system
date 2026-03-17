@@ -1,4 +1,6 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendNotificationEmail({
   to,
@@ -12,22 +14,12 @@ export async function sendNotificationEmail({
   taskId: string;
 }) {
   try {
-    const transporter = nodemailer.createTransport({
-      host: "proxy.uzmanposta.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_EMAIL,
-        pass: process.env.SMTP_PASSWORD,
-      },
-    });
-
     const taskLink = `https://jira-system.netlify.app/dashboard/tasks?task=${taskId}`;
 
-    await transporter.sendMail({
-      from: `"Task Flow" <${process.env.SMTP_EMAIL}>`,
+    await resend.emails.send({
+      from: "Task Flow <onboarding@resend.dev>", // 🔥 test üçün
       to,
-      subject: taskTitle, // 🔥 artıq subject = task adı
+      subject: taskTitle,
 
       html: `
       <div style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;">
@@ -69,7 +61,6 @@ export async function sendNotificationEmail({
                       ${taskTitle}
                     </h2>
 
-                    <!-- INFO -->
                     <div style="
                       background:#f9fafb;
                       border:1px solid #e5e7eb;
@@ -77,14 +68,10 @@ export async function sendNotificationEmail({
                       padding:15px;
                       margin-bottom:20px;
                       font-size:14px;
-                      color:#374151;
                     ">
-                      <p style="margin:0;">
-                        <strong>Təyin edən:</strong> ${assignedBy}
-                      </p>
+                      <strong>Təyin edən:</strong> ${assignedBy}
                     </div>
 
-                    <!-- BUTTON -->
                     <div style="text-align:center;margin-top:25px;">
                       <a href="${taskLink}"
                         style="
@@ -104,7 +91,6 @@ export async function sendNotificationEmail({
                   </td>
                 </tr>
 
-                <!-- FOOTER -->
                 <tr>
                   <td style="
                     background:#f9fafb;
@@ -127,9 +113,9 @@ export async function sendNotificationEmail({
       `,
     });
 
-    console.log("✅ Email sent:", to);
+    console.log("✅ Email sent via Resend:", to);
 
   } catch (err) {
-    console.error("❌ Email error:", err);
+    console.error("❌ Resend error:", err);
   }
 }
