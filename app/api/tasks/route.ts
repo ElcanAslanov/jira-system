@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendNotificationEmail } from "@/lib/sendEmail";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -401,6 +402,24 @@ export async function POST(req: Request) {
           task_id: task.id,
         }))
       );
+
+      /* ===== EMAIL GÖNDƏR ===== */
+
+const { data: users } = await supabaseAdmin
+  .from("employees")
+  .select("id, email")
+  .in("id", assignedIds);
+
+for (const u of users || []) {
+  if (!u.email) continue;
+
+ await sendNotificationEmail({
+  to: u.email,
+  taskTitle: title,
+  assignedBy: "Admin", // 👉 bunu dinamik də edə bilərik
+  taskId: task.id,
+});
+}
 
     /* ===== FILE UPLOAD (optional) ===== */
 
