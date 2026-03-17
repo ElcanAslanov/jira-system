@@ -19,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
   async function loadEmployee(authUser: any) {
     const { data: employee } = await supabase
       .from("employees")
@@ -42,21 +43,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     async function init() {
-      const { data } = await supabase.auth.getSession();
-      const session = data?.session;
-      if (!mounted) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
 
-      if (!session?.user) {
-        setUser(null);
-        setToken(null);
+        if (!mounted) return;
+
+        if (!session?.user) {
+          setUser(null);
+          setToken(null);
+          setLoading(false);
+          return;
+        }
+
+        setToken(session.access_token);
+
+        await loadEmployee(session.user);
+
         setLoading(false);
-        return;
+      } catch (e) {
+        console.error("Auth init error:", e);
+        setLoading(false); // 🔥 failsafe
       }
-
-      setToken(session.access_token);
-
-      await loadEmployee(session.user);
-      setLoading(false);
     }
 
     init();
@@ -65,19 +73,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (_event, session) => {
         if (!mounted) return;
 
-        if (!session?.user) {
-          setUser(null);
-          setToken(null);
-          return;
-        }
+        try {
+          if (!session?.user) {
+            setUser(null);
+            setToken(null);
+            return;
+          }
 
-        setToken(session.access_token);
-        await loadEmployee(session.user);
+          setToken(session.access_token);
+          await loadEmployee(session.user);
+        } catch (e) {
+          console.error("Auth change error:", e);
+        }
       }
     );
 
+    // 🔥 ƏN VACİB FIX — LOADING DONMASIN
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    }, 2000);
+
     return () => {
       mounted = false;
+      clearTimeout(timeout);
       listener.subscription.unsubscribe();
     };
   }, []);
