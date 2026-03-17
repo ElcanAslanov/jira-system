@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
 import Providers from "./providers";
+import ClientProvider from "@/app/components/ClientProvider"; // 🔥 əlavə olundu
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,7 +19,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <Providers>
-          {children}
+          <ClientProvider> {/* 🔥 ƏN VACİB HİSSƏ */}
+            {children}
+          </ClientProvider>
         </Providers>
       </body>
     </html>

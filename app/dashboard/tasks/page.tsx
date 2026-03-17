@@ -22,7 +22,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthProvider";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation";
 
 import DatePicker from "antd/es/date-picker";
 import { Select } from "antd";
@@ -410,8 +410,15 @@ const editor = useEditor(
 
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const router = useRouter();
+  // const router = useRouter();
 const { user, loading } = useAuth();
+useEffect(() => {
+  console.log("TASKS PAGE AUTH:", {
+    loading,
+    userId: user?.id ?? null,
+    role: (user as any)?.role ?? null,
+  });
+}, [loading, user]);
   const [permissions, setPermissions] = useState<string[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -790,11 +797,12 @@ const { user, loading } = useAuth();
     [getToken, user?.id, user]
   );
 
- useEffect(() => {
-  if (!loading && user) {
-    loadTasks();
-  }
-}, [loading, user?.id]);
+useEffect(() => {
+  if (loading) return;
+  if (!user?.id) return;
+
+  loadTasks();
+}, [loading, user?.id, loadTasks]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -1170,9 +1178,21 @@ try {
 
     [tasksBy, updateTask, loadTasks, pushActivity]
   );
+if (loading) {
+  return (
+    <div className="p-10">
+      {t.loading}
+    </div>
+  );
+}
 
-  if (loading) return <div className="p-10">{t.loading}</div>;
-  if (!user) return <div className="p-10">{t.noSession}</div>;
+if (!user?.id) {
+  return (
+    <div className="p-10">
+      {t.noSession}
+    </div>
+  );
+}
 
   const isCreator = viewTask?.created_by === user.id
   const isAssigned = viewTask?.assigned_to?.includes(user.id)
