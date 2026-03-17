@@ -5,75 +5,63 @@ import { supabase } from "@/lib/supabaseClient";
 
 type AuthContextType = {
   user: any;
-  token: string | null;
   loading: boolean;
 };
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  token: null,
   loading: true,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  async function loadEmployee(authUser: any) {
-    try {
-      const { data: employee } = await supabase
-        .from("employees")
-        .select(`
-          role_id,
-          roles (
-            name
-          )
-        `)
-        .eq("user_id", authUser.id)
-        .maybeSingle();
-
-      setUser({
-        ...authUser,
-        role_id: employee?.role_id ?? null,
-        role: employee?.roles?.[0]?.name ?? null,
-      });
-    } catch (e) {
-      console.error("loadEmployee error:", e);
-      setUser(authUser); // fallback
-    }
-  }
 
   useEffect(() => {
     let mounted = true;
 
     async function init() {
       try {
-        // ✅ ƏN VACİB — getUser istifadə et
-        const { data: userData } = await supabase.auth.getUser();
+        // 🔥 parallel fetch (çox vacib)
+        const [
+          { data: userData },
+          { data: sessionData }
+        ] = await Promise.all([
+          supabase.auth.getUser(),
+          supabase.auth.getSession(),
+        ]);
+
         const authUser = userData?.user;
 
         if (!mounted) return;
 
         if (!authUser) {
           setUser(null);
-          setToken(null);
           setLoading(false);
           return;
         }
 
-        // token ayrıca götürürük
-        const { data: sessionData } = await supabase.auth.getSession();
+        // employee fetch
+        const { data: employee } = await supabase
+          .from("employees")
+          .select(`role_id, roles(name)`)
+          .eq("user_id", authUser.id)
+          .maybeSingle();
 
-        setToken(sessionData?.session?.access_token ?? null);
+        if (!mounted) return;
 
-        await loadEmployee(authUser);
+        setUser({
+          ...authUser,
+          role_id: employee?.role_id ?? null,
+          role: employee?.roles?.[0]?.name ?? null,
+          token: sessionData?.session?.access_token ?? null,
+        });
 
-        setLoading(false);
       } catch (e) {
         console.error("Auth init error:", e);
-        setLoading(false);
       }
+
+      if (mounted) setLoading(false);
     }
 
     init();
@@ -82,36 +70,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (_event, session) => {
         if (!mounted) return;
 
-        try {
-          if (!session?.user) {
-            setUser(null);
-            setToken(null);
-            return;
-          }
-
-          setToken(session.access_token);
-
-          await loadEmployee(session.user);
-        } catch (e) {
-          console.error("Auth change error:", e);
+        if (!session?.user) {
+          setUser(null);
+          return;
         }
+
+        setUser((prev: any) => ({
+          ...session.user,
+          role_id: prev?.role_id,
+          role: prev?.role,
+          token: session.access_token,
+        }));
       }
     );
 
-    // 🔥 failsafe — loading donmasın
-    const timeout = setTimeout(() => {
-      if (mounted) setLoading(false);
-    }, 2000);
-
     return () => {
       mounted = false;
-      clearTimeout(timeout);
       listener.subscription.unsubscribe();
     };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading }}>
+    <AuthContext.Provider value={{ user, loading }}>
       {children}
     </AuthContext.Provider>
   );

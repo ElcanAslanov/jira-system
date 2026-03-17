@@ -1,55 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 
-let cache: any = null;
-let cacheTime = 0;
-
-const CACHE_DURATION = 1000 * 60 * 5; // 5 dəqiqə
-
 export function useEmployees() {
-  const [data, setData] = useState<any[]>(cache || []);
-  const [loading, setLoading] = useState(!cache);
+  return useQuery({
+    queryKey: ["employees"],
+    queryFn: async () => {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
 
-  useEffect(() => {
-    const now = Date.now();
+      if (!token) return [];
 
-    // cache valid isə fetch etmə
-    if (cache && now - cacheTime < CACHE_DURATION) {
-      setData(cache);
-      setLoading(false);
-      return;
-    }
+      const res = await fetch("/api/admin/employees", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    async function load() {
-      try {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        if (!token) return;
-
-        const res = await fetch("/api/admin/employees", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const json = await res.json();
-
-        cache = json.employees || [];
-        cacheTime = Date.now();
-
-        setData(cache);
-      } catch (err) {
-        console.error("Employees fetch error:", err);
-      }
-
-      setLoading(false);
-    }
-
-    load();
-  }, []);
-
-  return { employees: data, loading };
+      const json = await res.json();
+      return json.employees || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 }

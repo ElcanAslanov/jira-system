@@ -21,7 +21,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { supabase } from "@/lib/supabaseClient";
-import { useUser } from "@/hooks/useUser";
+import { useAuth } from "@/context/AuthProvider";
 import { useRouter } from "next/navigation";
 
 import DatePicker from "antd/es/date-picker";
@@ -363,7 +363,7 @@ export default function TasksPage() {
   const openTaskId = searchParams.get("open");
   const [viewMode, setViewMode] = useState<"board" | "list" | "calendar">("board");
   // const [users, setUsers] = useState<UserInfo[]>([]);
-  const { employees } = useEmployees();
+  const { data: employees, isLoading } = useEmployees();
 
   const users: UserInfo[] = useMemo(() => {
   return (employees || []).map((u: any) => ({
@@ -411,7 +411,7 @@ const editor = useEditor(
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
-  const { user, loading } = useUser();
+const { user, loading } = useAuth();
   const [permissions, setPermissions] = useState<string[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { useUser } from "@/hooks/useUser";
+import { useAuth } from "@/context/AuthProvider";
 import { useRouter } from "next/navigation";
 import { useLang } from "@/context/LanguageContext";
 import { translations } from "@/lib/translations";
@@ -74,7 +74,7 @@ export default function RecurringPage() {
   const [viewRule, setViewRule] = useState<Rule | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const { user, loading } = useUser();
+const { user, loading } = useAuth();
   const router = useRouter();
 
   const [permissions, setPermissions] = useState<string[]>([]);

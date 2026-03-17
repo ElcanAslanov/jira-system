@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import { useUser } from "@/hooks/useUser";
+import { useAuth } from "@/context/AuthProvider";
 import { useLang } from "@/context/LanguageContext";
 import { translations } from "@/lib/translations";
 
@@ -29,7 +29,7 @@ export default function Sidebar() {
   const [langOpen, setLangOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useUser();
+  const { user } = useAuth();
 
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);

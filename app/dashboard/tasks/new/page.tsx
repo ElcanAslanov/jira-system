@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { useUser } from "@/hooks/useUser";
+import { useAuth } from "@/context/AuthProvider";
 import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -29,7 +29,7 @@ export default function CreateTaskPage() {
 
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const router = useRouter();
-  const { user, loading } = useUser();
+  const { user, loading } = useAuth();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");

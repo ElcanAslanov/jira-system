@@ -3,12 +3,13 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { useUser } from "@/hooks/useUser";
+
 import { DatePicker, Tooltip } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useLang } from "@/context/LanguageContext";
 import { translations } from "@/lib/translations";
+import { useAuth } from "@/context/AuthProvider";
 
 const { RangePicker } = DatePicker;
 
@@ -34,7 +35,7 @@ export default function NewRecurringPage() {
     const t = translations[lang];
 
     const router = useRouter();
-    const { user, loading } = useUser();
+    const { user, loading } = useAuth();
 
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");

@@ -2,7 +2,7 @@
 
 import Sidebar from "../components/Sidebar";
 import NotificationBell from "../components/NotificationBell";
-import { useUser } from "@/hooks/useUser";
+import {useAuth} from "@/context/AuthProvider"
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -11,7 +11,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useUser();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
