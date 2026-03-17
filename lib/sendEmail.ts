@@ -1,6 +1,14 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: "proxy.uzmanposta.com",
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.SMTP_EMAIL,
+    pass: process.env.SMTP_PASSWORD,
+  },
+});
 
 export async function sendNotificationEmail({
   to,
@@ -14,108 +22,35 @@ export async function sendNotificationEmail({
   taskId: string;
 }) {
   try {
-    const taskLink = `https://jira-system.netlify.app/dashboard/tasks?task=${taskId}`;
+    const taskLink = `https://jira-system.netlify.app/dashboard/tasks?open=${taskId}`;
 
-    await resend.emails.send({
-     from: "Task Flow <corporate@cahannet.com>",
+    const info = await transporter.sendMail({
+      from: `"Task Flow" <${process.env.SMTP_EMAIL}>`,
       to,
-      subject: taskTitle,
-
+      subject: `Yeni tapşırıq: ${taskTitle}`,
       html: `
-      <div style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;">
-        
-        <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
-          <tr>
-            <td align="center">
+        <div style="font-family:Arial;padding:20px;">
+          <h2>🚀 Yeni Tapşırıq</h2>
 
-              <table width="520" cellpadding="0" cellspacing="0" style="
-                background:#ffffff;
-                border-radius:12px;
-                box-shadow:0 10px 30px rgba(0,0,0,0.08);
-                overflow:hidden;
-              ">
+          <p><b>${taskTitle}</b></p>
 
-                <!-- HEADER -->
-                <tr>
-                  <td style="
-                    background:linear-gradient(135deg,#4f46e5,#6366f1);
-                    color:white;
-                    padding:20px;
-                    text-align:center;
-                    font-size:20px;
-                    font-weight:bold;
-                  ">
-                    🚀 Task Flow
-                  </td>
-                </tr>
+          <p><b>Təyin edən:</b> ${assignedBy}</p>
 
-                <!-- BODY -->
-                <tr>
-                  <td style="padding:30px; color:#111827;">
+          <a href="${taskLink}" 
+            style="display:inline-block;margin-top:10px;padding:10px 16px;background:#4f46e5;color:white;border-radius:8px;text-decoration:none;">
+            Tapşırığa bax →
+          </a>
 
-                    <div style="font-size:14px;color:#6b7280;margin-bottom:10px;">
-                      Sizə yeni tapşırıq təyin edildi
-                    </div>
-
-                    <h2 style="margin:0 0 15px;font-size:20px;">
-                      ${taskTitle}
-                    </h2>
-
-                    <div style="
-                      background:#f9fafb;
-                      border:1px solid #e5e7eb;
-                      border-radius:8px;
-                      padding:15px;
-                      margin-bottom:20px;
-                      font-size:14px;
-                    ">
-                      <strong>Təyin edən:</strong> ${assignedBy}
-                    </div>
-
-                    <div style="text-align:center;margin-top:25px;">
-                      <a href="${taskLink}"
-                        style="
-                          display:inline-block;
-                          background:#4f46e5;
-                          color:white;
-                          text-decoration:none;
-                          padding:12px 24px;
-                          border-radius:8px;
-                          font-size:14px;
-                          font-weight:600;
-                        ">
-                        Tapşırığa bax →
-                      </a>
-                    </div>
-
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="
-                    background:#f9fafb;
-                    padding:15px;
-                    text-align:center;
-                    font-size:12px;
-                    color:#9ca3af;
-                  ">
-                    Bu email avtomatik göndərilmişdir • Task Flow
-                  </td>
-                </tr>
-
-              </table>
-
-            </td>
-          </tr>
-        </table>
-
-      </div>
+          <p style="margin-top:20px;font-size:12px;color:#999;">
+            Bu email avtomatik göndərilib
+          </p>
+        </div>
       `,
     });
 
-    console.log("✅ Email sent via Resend:", to);
+    console.log("✅ SMTP Email sent:", info.messageId);
 
   } catch (err) {
-    console.error("❌ Resend error:", err);
+    console.error("❌ SMTP ERROR:", err);
   }
 }
