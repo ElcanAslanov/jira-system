@@ -260,12 +260,10 @@ export default function NewRecurringPage() {
         router.push("/dashboard/recurring");
     };
 
-if (loading) {
-  return <div className="p-10">Yüklənir...</div>;
-}
+
 
 if (!user) {
-  return null;
+  return <div className="p-10">Yüklənir...</div>;
 }
 
     return (

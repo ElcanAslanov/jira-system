@@ -182,9 +182,7 @@ const toggleActive = async (rule: Rule) => {
     setTimeout(() => setViewRule(null), 220);
   };
 
-if (loading) {
-  return <div className="p-10">Yüklənir...</div>;
-}
+
 
 if (!user) {
   return null;
