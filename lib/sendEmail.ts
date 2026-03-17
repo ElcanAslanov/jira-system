@@ -17,7 +17,7 @@ export async function sendNotificationEmail({
     const taskLink = `https://jira-system.netlify.app/dashboard/tasks?task=${taskId}`;
 
     await resend.emails.send({
-      from: "Task Flow <onboarding@resend.dev>", // 🔥 test üçün
+     from: "Task Flow <corporate@cahannet.com>",
       to,
       subject: taskTitle,
 
