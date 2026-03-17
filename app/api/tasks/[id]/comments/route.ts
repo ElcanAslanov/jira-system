@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,7 +35,7 @@ async function getAuthUser(req: Request) {
 
   if (!token) return null;
 
-  const { data, error } = await supabase.auth.getUser(token);
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
 
   if (error || !data?.user) return null;
 

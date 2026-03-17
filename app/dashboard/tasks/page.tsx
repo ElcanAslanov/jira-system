@@ -394,7 +394,6 @@ export default function TasksPage() {
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   // COMMENTS STATE
   const [comments, setComments] = useState<any[]>([]);
-  const [newComment, setNewComment] = useState("");
 
 const editor = useEditor(
   {
@@ -934,10 +933,11 @@ const editor = useEditor(
       return;
     }
 
-    if (!newComment.trim() && commentFiles.length === 0) {
-      console.warn("Empty comment");
-      return;
-    }
+   const html = editor?.getHTML() || ""
+
+if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) {
+  return;
+}
 
     let uploaded: {
       name: string;
@@ -989,10 +989,10 @@ const editor = useEditor(
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          comment: newComment.trim(),
-          files: uploaded,
-        }),
+       body: JSON.stringify({
+  comment: html,
+  files: uploaded,
+}),
       });
 
       if (!res.ok) {
@@ -1006,7 +1006,14 @@ const editor = useEditor(
         return;
       }
 
-      const data = await res.json();
+const text = await res.text()
+
+let data = null
+try {
+  data = JSON.parse(text)
+} catch (e) {
+  console.error("JSON parse error:", e)
+}
 
       // 🔥 UI UPDATE
       setComments((prev) => [
@@ -1035,9 +1042,8 @@ const editor = useEditor(
       });
 
       // 🔥 RESET
-      setNewComment("");
-      setCommentFiles([]);
       editor?.commands.clearContent();
+      setCommentFiles([]);
 
       message.success(t.commentAdded);
 
@@ -2489,13 +2495,13 @@ const editor = useEditor(
                     <div className="px-4 pb-4 pt-2 flex justify-end border-t bg-white">
 
                       <button
-                        onClick={async () => {
-                          if (!newComment.trim() && commentFiles.length === 0) return;
+                       onClick={async () => {
+  const html = editor?.getHTML() || ""
 
-                          await handleAddComment();
+  if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) return;
 
-                          editor?.commands.clearContent();
-                        }}
+  await handleAddComment();
+}}
                         className="
         bg-indigo-600
         hover:bg-indigo-700
