@@ -320,8 +320,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
               <div className="mt-2 ml-4 space-y-1">
                 {group.links.map((link) => {
                 const isActive =
-  pathname === link.href ||
-  (link.href !== "/dashboard" && pathname.startsWith(link.href));
+  pathname === link.href;
 
                   return (
                     <Link

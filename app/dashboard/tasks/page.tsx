@@ -607,7 +607,6 @@ export default function TasksPage() {
         .from("role_permissions")
         .select("permission_key")
         .eq("role_id", (user as any)?.role_id);
-
       // 🔹 USER OVERRIDE PERMISSIONS
       const { data: userPerms } = await supabase
         .from("user_permissions")
@@ -1067,19 +1066,19 @@ useEffect(() => {
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
 
-    if (isMobile) return // 📱 mobil drag disable
+ //   if (isMobile) return // 📱 mobil drag disable
 
     const id = String(e.active.id);
 
     const found = findTask(tasksBy, id);
 
     // 🔒 DONE task drag olunmasın
-    if (
-      (user as any)?.role === "EMPLOYEE" &&
-      (found?.task.status === "DONE" || found?.task.status === "CANCELLED")
-    ) {
-      return;
-    }
+    // if (
+    //   (user as any)?.role === "EMPLOYEE" &&
+    //   (found?.task.status === "DONE" || found?.task.status === "CANCELLED")
+    // ) {
+    //   return;
+    // }
 
     setActiveTaskId(id);
     setIsDraggingNow(true);
@@ -1090,97 +1089,111 @@ useEffect(() => {
   const handleDragEnd = useCallback(
 
     async (event: DragEndEvent) => {
+  const { active, over } = event;
+  setActiveTaskId(null);
+  if (!over) return;
 
-      const { active, over } = event;
-      setActiveTaskId(null);
-      if (!over) return;
+  const activeId = String(active.id);
+  const overId = String(over.id);
 
+  const activeFound = findTask(tasksBy, activeId);
+  if (!activeFound) return;
 
-      const activeId = String(active.id);
-      const overId = String(over.id);
+  const overAsStatus = isStatus(overId) ? (overId as Status) : null;
+  const overFoundTask = overAsStatus ? null : findTask(tasksBy, overId);
 
-      // We accept drop on:
-      // 1) a column id (TODO, IN_PROGRESS...)
-      // 2) a task id (meaning: same column reorder OR move into target column at that position)
-      const activeFound = findTask(tasksBy, activeId);
-      if (!activeFound) return;
+  const sourceStatus = activeFound.status;
+  const sourceIndex = activeFound.index;
 
-      const overAsStatus = isStatus(overId) ? (overId as Status) : null;
-      const overFoundTask = overAsStatus ? null : findTask(tasksBy, overId);
+  const targetStatus: Status = overAsStatus
+    ? overAsStatus
+    : (overFoundTask?.status ?? sourceStatus);
 
-      // decide target status
-      const targetStatus: Status = overAsStatus
-        ? overAsStatus
-        : (overFoundTask?.status ?? activeFound.status);
+  const task = activeFound.task;
+  const currentStatus = sourceStatus;
 
-      // 🔒 EMPLOYEE CANCELLED column-a ata bilməz
-      const role = (roleName || "").toUpperCase()
+  // 👤 RULE
+  const isOwner = task.created_by === user.id;
+ const normalize = (s: string) => s?.toLowerCase().trim();
 
-      if (targetStatus === "CANCELLED" && role === "EMPLOYEE") {
-        return
-      }
+const fullName =
+  normalize(user.user_metadata?.full_name || "") ||
+  normalize(user.user_metadata?.name || "");
 
-      // 🔒 Status transition rule
-      if (!canTransition(activeFound.status, targetStatus) && activeFound.status !== targetStatus) {
-        return;
-      }
+const isAssignee =
+  task.assigned_to?.some((a: string) =>
+    normalize(a).includes(fullName) || fullName.includes(normalize(a))
+  );
 
-      // if search filter is on, dragging should still operate on FULL tasksBy,
-      // but visually user drags within filtered columns; we apply to tasksBy anyway.
+  let allowed = false;
 
-      const sourceStatus = activeFound.status;
-      const sourceIndex = activeFound.index;
+  if (isOwner) {
+    allowed = true;
+  } else if (isAssignee) {
+    if (currentStatus === "TODO" && targetStatus === "IN_PROGRESS") {
+      allowed = true;
+    }
+    if (currentStatus === "IN_PROGRESS" && targetStatus === "DONE") {
+      allowed = true;
+    }
+  }
 
-      // Build next state
-      prevSnapshotRef.current = tasksBy;
+  // 🔒 EMPLOYEE CANCELLED ata bilməz
+  const role = (roleName || "").toUpperCase();
+  if (targetStatus === "CANCELLED" && role === "EMPLOYEE") {
+    return;
+  }
 
-      const next: TasksByStatus = {
-        TODO: [...tasksBy.TODO],
-        IN_PROGRESS: [...tasksBy.IN_PROGRESS],
-        DONE: [...tasksBy.DONE],
-        CANCELLED: [...tasksBy.CANCELLED],
-      };
+  // ❌ icazə yoxdursa çıx
+  if (!allowed) return;
 
-      // remove from source
-      const [moved] = next[sourceStatus].splice(sourceIndex, 1);
-      if (!moved) return;
+  // ===== MOVE LOGIC =====
+  prevSnapshotRef.current = tasksBy;
 
-      let targetIndex = next[targetStatus].length;
+  const next: TasksByStatus = {
+    TODO: [...tasksBy.TODO],
+    IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+    DONE: [...tasksBy.DONE],
+    CANCELLED: [...tasksBy.CANCELLED],
+  };
 
-      if (overFoundTask && overFoundTask.status === targetStatus) {
-        // drop on a task in target column -> insert at that index
-        targetIndex = overFoundTask.index;
-      }
+  // remove
+  const [moved] = next[sourceStatus].splice(sourceIndex, 1);
+  if (!moved) return;
 
-      // insert into target
-      const movedUpdated: Task = { ...moved, status: targetStatus };
-      next[targetStatus].splice(targetIndex, 0, movedUpdated);
+  let targetIndex = next[targetStatus].length;
 
-      // if same column and we inserted before/after, also ensure order with arrayMove semantics:
-      // (already handled by remove+insert)
-      // compute new sort_index for moved item in that target column
-      const newSort = getNewSortIndex(next[targetStatus], targetIndex);
-      next[targetStatus][targetIndex] = { ...next[targetStatus][targetIndex], sort_index: newSort };
+  if (overFoundTask && overFoundTask.status === targetStatus) {
+    targetIndex = overFoundTask.index;
+  }
 
-      // optimistic
-      setTasksBy(next);
-      pushActivity(`• "${moved.title}" → ${targetStatus}`);
+  // insert
+  const movedUpdated: Task = { ...moved, status: targetStatus };
+  next[targetStatus].splice(targetIndex, 0, movedUpdated);
 
-      try {
-       await updateTask(activeId, { 
-  status: targetStatus, 
-  sort_index: Math.floor(newSort) 
-});
-        // refresh in background (optional)
-        // loadTasks();
-      } catch (err: any) {
-        // rollback
-        if (prevSnapshotRef.current) setTasksBy(prevSnapshotRef.current);
-        pushActivity(`• Update failed for "${moved.title}"`);
-      }
-    },
+  // sort_index
+  const newSort = getNewSortIndex(next[targetStatus], targetIndex);
+  next[targetStatus][targetIndex] = {
+    ...next[targetStatus][targetIndex],
+    sort_index: newSort,
+  };
 
-    [tasksBy, updateTask, loadTasks, pushActivity]
+  // optimistic UI
+  setTasksBy(next);
+  pushActivity(`• "${moved.title}" → ${targetStatus}`);
+
+  try {
+    await updateTask(activeId, {
+      status: targetStatus,
+      sort_index: Math.floor(newSort),
+    });
+  } catch (err: any) {
+    if (prevSnapshotRef.current) setTasksBy(prevSnapshotRef.current);
+    pushActivity(`• Update failed for "${moved.title}"`);
+  }
+}
+
+    ,[tasksBy, updateTask, loadTasks, pushActivity]
   );
   if (loading) {
     return (
@@ -2942,7 +2955,7 @@ const TaskCard = React.memo(function TaskCard({
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: (!can("tasks.edit.list")) || isDone || isMobile,
+    disabled: isMobile,
   });
 
   const isAssignedUser =
@@ -2972,7 +2985,7 @@ const TaskCard = React.memo(function TaskCard({
         opacity: isDragging ? 0.6 : isDone ? 0.7 : 1,
       }}
       {...attributes}
-      {...(!isDone && !isMobile ? listeners : {})}
+      {...listeners}
       className={`
       ${bgColor}
       p-4
