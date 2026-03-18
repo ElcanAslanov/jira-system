@@ -366,15 +366,15 @@ export default function TasksPage() {
   const { data: employees, isLoading } = useEmployees();
 
   const users: UserInfo[] = useMemo(() => {
-  return (employees || []).map((u: any) => ({
-    id: u.id,
-    name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
-    email: u.email ?? null,
-    role: u.positions?.name ?? null,
-    company: u.companies?.name ?? null,
-    department: u.departments?.name ?? null,
-  }));
-}, [employees]);
+    return (employees || []).map((u: any) => ({
+      id: u.id,
+      name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
+      email: u.email ?? null,
+      role: u.positions?.name ?? null,
+      company: u.companies?.name ?? null,
+      department: u.departments?.name ?? null,
+    }));
+  }, [employees]);
 
   const STATUS_LABELS: Record<Status, string> = {
     TODO: t.todo,
@@ -395,30 +395,30 @@ export default function TasksPage() {
   // COMMENTS STATE
   const [comments, setComments] = useState<any[]>([]);
 
-const editor = useEditor(
-  {
-    extensions: [
-      StarterKit,
-      Placeholder.configure({
-        placeholder: t.writeComment
-      })
-    ],
-    immediatelyRender: false
-  },
-  [lang]
-)
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit,
+        Placeholder.configure({
+          placeholder: t.writeComment
+        })
+      ],
+      immediatelyRender: false
+    },
+    [lang]
+  )
 
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   // const router = useRouter();
-const { user, loading } = useAuth();
-useEffect(() => {
-  console.log("TASKS PAGE AUTH:", {
-    loading,
-    userId: user?.id ?? null,
-    role: (user as any)?.role ?? null,
-  });
-}, [loading, user]);
+  const { user, loading } = useAuth();
+  useEffect(() => {
+    console.log("TASKS PAGE AUTH:", {
+      loading,
+      userId: user?.id ?? null,
+      role: (user as any)?.role ?? null,
+    });
+  }, [loading, user]);
   const [permissions, setPermissions] = useState<string[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -701,7 +701,7 @@ useEffect(() => {
     setTasksBy(groupByStatus(tasks));
   }, [getToken]);
 
- 
+
 
 
 
@@ -797,12 +797,12 @@ useEffect(() => {
     [getToken, user?.id, user]
   );
 
-useEffect(() => {
-  if (loading) return;
-  if (!user?.id) return;
+  useEffect(() => {
+    if (loading) return;
+    if (!user?.id) return;
 
-  loadTasks();
-}, [loading, user?.id, loadTasks]);
+    loadTasks();
+  }, [loading, user?.id, loadTasks]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -941,11 +941,11 @@ useEffect(() => {
       return;
     }
 
-   const html = editor?.getHTML() || ""
+    const html = editor?.getHTML() || ""
 
-if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) {
-  return;
-}
+    if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) {
+      return;
+    }
 
     let uploaded: {
       name: string;
@@ -997,10 +997,10 @@ if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-       body: JSON.stringify({
-  comment: html,
-  files: uploaded,
-}),
+        body: JSON.stringify({
+          comment: html,
+          files: uploaded,
+        }),
       });
 
       if (!res.ok) {
@@ -1014,14 +1014,14 @@ if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) {
         return;
       }
 
-const text = await res.text()
+      const text = await res.text()
 
-let data = null
-try {
-  data = JSON.parse(text)
-} catch (e) {
-  console.error("JSON parse error:", e)
-}
+      let data = null
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("JSON parse error:", e)
+      }
 
       // 🔥 UI UPDATE
       setComments((prev) => [
@@ -1178,21 +1178,21 @@ try {
 
     [tasksBy, updateTask, loadTasks, pushActivity]
   );
-if (loading) {
-  return (
-    <div className="p-10">
-      {t.loading}
-    </div>
-  );
-}
+  if (loading) {
+    return (
+      <div className="p-10">
+        {t.loading}
+      </div>
+    );
+  }
 
-if (!user?.id) {
-  return (
-    <div className="p-10">
-      {t.noSession}
-    </div>
-  );
-}
+  if (!user?.id) {
+    return (
+      <div className="p-10">
+        {t.noSession}
+      </div>
+    );
+  }
 
   const isCreator = viewTask?.created_by === user.id
   const isAssigned = viewTask?.assigned_to?.includes(user.id)
@@ -1337,7 +1337,7 @@ if (!user?.id) {
                   users={users}   // BUNU ƏLAVƏ ET
                   updateTask={updateTask}
                   loadTasks={loadTasks}
-                   isMobile={isMobile}
+                  isMobile={isMobile}
                   moveTask={moveTask}
                   onSelect={(task) => {
                     setViewTask(task);
@@ -1530,7 +1530,7 @@ if (!user?.id) {
                         <div className="font-medium">{t.title}</div>
                         {t.creator_name && (
                           <div className="text-[11px] text-gray-400">
-                           {t.creator_name} {translations[lang].createdByUser}
+                            {t.creator_name} {translations[lang].createdByUser}
                           </div>
                         )}
                       </td>
@@ -1634,13 +1634,13 @@ if (!user?.id) {
                             onClick={() => setSelectedTask(t)}
                             className="border px-3 py-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50"
                           >
-                           {translations[lang].edit}
+                            {translations[lang].edit}
                           </button>
                         )}
                         {can("tasks.delete.list") && (
                           <button
                             onClick={async () => {
-                      if (!confirm(translations[lang].confirmDeleteTask)) return;
+                              if (!confirm(translations[lang].confirmDeleteTask)) return;
 
                               const snapshot = tasksBy;
 
@@ -1711,7 +1711,7 @@ if (!user?.id) {
                     <div>{translations[lang].startDate}: {formatDMY(t.start_date)}</div>
                     <div>{translations[lang].endDate}: {formatDMY(t.due_date)}</div>
                     <div>
-                     {translations[lang].assignedTo}
+                      {translations[lang].assignedTo}
                       {t.assigned_to?.length ? (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {t.assigned_to.map((u, i) => (
@@ -1747,7 +1747,7 @@ if (!user?.id) {
                         onClick={() => setSelectedTask(t)}
                         className="flex-1 border px-3 py-2 rounded-lg text-sm"
                       >
-                       {translations[lang].edit}
+                        {translations[lang].edit}
                       </button>
                     )}
                     {can("tasks.delete.list") && (
@@ -1779,7 +1779,7 @@ if (!user?.id) {
                         }}
                         className="flex-1 border px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
                       >
-                      {translations[lang].delete}
+                        {translations[lang].delete}
                       </button>
                     )}
                   </div>
@@ -2024,7 +2024,7 @@ if (!user?.id) {
                       color: "#4338ca",
                     }}
                   >
-                   {translations[lang].edit}
+                    {translations[lang].edit}
                   </button>
                 )}
                 {can("tasks.delete.drawer") && (
@@ -2117,11 +2117,25 @@ if (!user?.id) {
                 {viewTask.status !== "DONE" && (
                   <button
                     onClick={async () => {
-                      const nextStatus = STATUS_FLOW[viewTask.status as Status]?.[0];
+                      let nextStatus: Status | null = null;
+
+                      if (viewTask.status === "TODO") {
+                        nextStatus = "IN_PROGRESS";
+                      }
+
+                      if (viewTask.status === "IN_PROGRESS") {
+                        nextStatus = "DONE";
+                      }
+
                       if (!nextStatus) return;
 
+
+                      moveTask(viewTask.id, nextStatus); // 🔥 instant UI
+
                       await updateTask(viewTask.id, { status: nextStatus });
-                      await loadTasks();
+
+                      // optional:
+                      setViewTask(prev => prev ? { ...prev, status: nextStatus } : prev)
 
                       setViewTask((prev: any) => prev ? { ...prev, status: nextStatus } : prev)
                     }}
@@ -2135,8 +2149,11 @@ if (!user?.id) {
                 {viewTask.status === "CANCELLED" && isCreator && (
                   <button
                     onClick={async () => {
-                      await updateTask(viewTask.id, { status: "TODO" })
-                      await loadTasks()
+                      moveTask(viewTask.id, "TODO");
+
+                      await updateTask(viewTask.id, { status: "TODO" });
+
+                      setViewTask(prev => prev ? { ...prev, status: "TODO" } : prev)
 
                       setViewTask((prev: any) =>
                         prev ? { ...prev, status: "TODO" } : prev
@@ -2515,13 +2532,13 @@ if (!user?.id) {
                     <div className="px-4 pb-4 pt-2 flex justify-end border-t bg-white">
 
                       <button
-                       onClick={async () => {
-  const html = editor?.getHTML() || ""
+                        onClick={async () => {
+                          const html = editor?.getHTML() || ""
 
-  if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) return;
+                          if (!html.replace(/<[^>]+>/g, "").trim() && commentFiles.length === 0) return;
 
-  await handleAddComment();
-}}
+                          await handleAddComment();
+                        }}
                         className="
         bg-indigo-600
         hover:bg-indigo-700
@@ -2645,7 +2662,7 @@ function MultiSelectDropdown({
         className="border rounded-xl px-3 py-2 bg-gray-50 cursor-pointer flex justify-between items-center"
       >
         <span className="text-sm text-gray-700">
-        {value.length ? `${value.length} ${t.selected}` : placeholder}
+          {value.length ? `${value.length} ${t.selected}` : placeholder}
         </span>
         <span className="text-indigo-600 text-sm">▲</span>
       </div>
@@ -2755,7 +2772,7 @@ function Column({
   moveTask: (taskId: string, nextStatus: Status) => void;
   users: UserInfo[];
   statusLabels: Record<Status, string>;
-  isMobile:boolean
+  isMobile: boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isCancelledLocked =

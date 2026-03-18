@@ -30,7 +30,7 @@ export async function sendNotificationEmail({
       subject: `Yeni tapşırıq: ${taskTitle}`,
       html: `
         <div style="font-family:Arial;padding:20px;">
-          <h2> Yeni Tapşırıq</h2>
+          <h2>🚀 Yeni Tapşırıq</h2>
 
           <p><b>${taskTitle}</b></p>
 
