@@ -2218,13 +2218,7 @@ const isAssignee =
 
               <DrawerRow
                 label={t.createdBy}
-                value={
-                  viewTask.created_by ? (
-                    <UserBadge userId={viewTask.created_by} users={users} />
-                  ) : viewTask.creator_name ? (
-                    <span>{viewTask.creator_name}</span>
-                  ) : "-"
-                }
+               value={viewTask.creator_name ?? "-"}
               />
 
               <DrawerRow
