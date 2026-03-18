@@ -22,7 +22,7 @@ export async function sendNotificationEmail({
   taskId: string;
 }) {
   try {
-    const taskLink = `https://jira-system.netlify.app/dashboard/tasks?open=${taskId}`;
+    const taskLink = `https://cahanflow.az/dashboard/tasks?open=${taskId}`;
 
     const info = await transporter.sendMail({
       from: `"Task Flow" <${process.env.SMTP_EMAIL}>`,

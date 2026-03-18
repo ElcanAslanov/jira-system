@@ -358,24 +358,38 @@ export async function POST(req: Request) {
 
     /* ===== EMAIL GÖNDƏR ===== */
 
-    const { data: users } = await supabaseAdmin
-      .from("employees")
-      .select("id, email")
-      .in("id", assignedIds);
+   
 
-   void Promise.all(
+// ✅ BURAYA ƏLAVƏ ET
+const { data: currentUser } = await supabaseAdmin
+  .from("employees")
+  .select("ad, soyad")
+  .eq("id", user.id)
+  .single();
+
+const assignedByName = currentUser
+  ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+  : "Admin";
+
+// sonra users fetch
+const { data: users } = await supabaseAdmin
+  .from("employees")
+  .select("id, email")
+  .in("id", assignedIds);
+
+// və email
+void Promise.all(
   (users || []).map((u) => {
     if (!u.email) return Promise.resolve();
+
     return sendNotificationEmail({
       to: u.email,
       taskTitle: title,
-      assignedBy: "Admin",
+      assignedBy: assignedByName, // ✅ artıq işləyəcək
       taskId: task.id,
     });
   })
-).catch((err) => {
-  console.error("EMAIL SEND ERROR:", err);
-});
+);
 
     /* ===== FILE UPLOAD (optional) ===== */
 
