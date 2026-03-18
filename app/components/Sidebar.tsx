@@ -21,7 +21,7 @@ type Group = {
   links: SubLink[];
 };
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
 
 
   const { lang, setLang } = useLang();
@@ -319,14 +319,18 @@ export default function Sidebar() {
             {openGroup === group.key && (
               <div className="mt-2 ml-4 space-y-1">
                 {group.links.map((link) => {
-                  const isActive =
-                    pathname === link.href;
+                const isActive =
+  pathname === link.href ||
+  (link.href !== "/dashboard" && pathname.startsWith(link.href));
 
                   return (
                     <Link
                       key={link.href}
                       href={link.href}
                        prefetch={false}
+                        onClick={() => {
+    onClose?.(); // 🔥 ƏSAS FIX
+  }}
                       className={`block px-4 py-2 rounded-lg text-sm transition ${isActive
                         ? "bg-[#e42526]/20 text-white"
                         : "text-gray-400 hover:bg-white/5 hover:text-white"
@@ -347,6 +351,9 @@ export default function Sidebar() {
         {permissions.includes("settings.view") && (
           <Link
             href="/dashboard/settings"
+             onClick={() => {
+    onClose?.(); // 🔥 ƏSAS FIX
+  }}
             className={`block w-full text-center py-2.5 rounded-xl text-sm transition ${pathname === "/dashboard/settings"
               ? "bg-[#e42526]/20 text-white"
               : "bg-white/5 hover:bg-white/10 text-gray-300"

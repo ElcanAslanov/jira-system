@@ -62,22 +62,30 @@ export default function DashboardLayout({
 
       {/* DESKTOP SIDEBAR */}
       <div className="hidden lg:block fixed top-0 left-0 h-screen w-64 z-40">
-        <Sidebar />
+        <Sidebar onClose={sidebarOpen ? () => setSidebarOpen(false) : undefined} />
       </div>
 
       {/* MOBILE SIDEBAR */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setSidebarOpen(false)}
-          />
+     <div
+  className={`fixed inset-0 z-50 lg:hidden transition ${
+    sidebarOpen ? "pointer-events-auto" : "pointer-events-none"
+  }`}
+>
+  <div
+    className={`absolute inset-0 bg-black/40 transition-opacity ${
+      sidebarOpen ? "opacity-100" : "opacity-0"
+    }`}
+    onClick={() => setSidebarOpen(false)}
+  />
 
-          <div className="absolute top-0 left-0 h-screen w-72 bg-slate-900 shadow-xl">
-            <Sidebar />
-          </div>
-        </div>
-      )}
+  <div
+    className={`absolute top-0 left-0 h-screen w-72 bg-slate-900 shadow-xl transform transition-transform ${
+      sidebarOpen ? "translate-x-0" : "-translate-x-full"
+    }`}
+  >
+    <Sidebar onClose={() => setSidebarOpen(false)} />
+  </div>
+</div>
 
       {/* MAIN CONTENT */}
       <div className="flex flex-col min-h-screen lg:ml-64">

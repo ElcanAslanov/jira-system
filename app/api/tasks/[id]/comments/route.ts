@@ -184,36 +184,20 @@ export async function POST(
     }
 
     /* ===== INSERT COMMENT ===== */
-
-    const { data: insertedComment, error } = await supabaseAdmin
-      .from("task_comments")
-      .insert({
-        task_id: taskId,
-        author_id: authUser.id,
-       body: hasMessage ? body.comment.trim() : "",
-        files: hasFiles ? body.files : [],
-      })
-      .select()
-      .single();
+const { error } = await supabaseAdmin
+  .from("task_comments")
+  .insert({
+    task_id: taskId,
+    author_id: authUser.id,
+    body: hasMessage ? body.comment.trim() : "",
+    files: hasFiles ? body.files : [],
+  });
 
     if (error) throw error;
 
     /* ===== AUTHOR AUTO READ ===== */
 
-    await supabaseAdmin
-      .from("task_comment_reads")
-      .upsert(
-        {
-          task_id: taskId,
-          comment_id: insertedComment.id,
-          employee_id: employeeId,
-          read_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "comment_id,employee_id",
-        }
-      );
-
+   
     /* ================= NOTIFICATIONS ================= */
 
     const { data: task } = await supabaseAdmin
@@ -259,21 +243,7 @@ export async function POST(
       .eq("id", employeeId)
       .single();
 
-    return NextResponse.json({
-      comment: {
-        id: insertedComment.id,
-        message: insertedComment.body,
-        created_at: insertedComment.created_at,
-        author_id: authUser.id,
-        author_name: emp
-          ? `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim()
-          : "Unknown",
-        files: Array.isArray(insertedComment.files)
-          ? insertedComment.files
-          : [],
-        reads: [],
-      },
-    });
+   return NextResponse.json({ success: true });
 
   } catch (e: any) {
     console.error("COMMENT INSERT ERROR:", e);

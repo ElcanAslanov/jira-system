@@ -59,42 +59,17 @@ async function getRequestUser(req: Request) {
 export async function GET(req: Request) {
   try {
     const user = await getRequestUser(req);
-if (!user) {
-  return NextResponse.json(
-    { error: "Unauthorized" },
-    { status: 403 }
-  );
-}
-    // 🔥 RECURSIVE: bütün alt rehber və employee-ləri tapmaq üçün
-    // async function getAllSubordinates(rootId: string): Promise<string[]> {
-    //   const visited = new Set<string>();
-    //   const stack = [rootId];
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
+      );
+    }
 
-    //   while (stack.length > 0) {
-    //     const current = stack.pop();
-    //     if (!current) continue;
-
-    //     const { data } = await supabaseAdmin
-    //       .from("employee_guides")
-    //       .select("employee_id")
-    //       .eq("guide_id", current);
-
-    //     const children = data?.map((r) => r.employee_id) ?? [];
-
-    //     for (const child of children) {
-    //       if (!visited.has(child)) {
-    //         visited.add(child);
-    //         stack.push(child);
-    //       }
-    //     }
-    //   }
-
-    //   return Array.from(visited);
-    // }
 
     let tasks: any[] = [];
 
- const baseSelect = `
+    const baseSelect = `
   id,
   title,
   description,
@@ -134,49 +109,49 @@ if (!user) {
 
     /* ================= REHBER ================= */
 
-   /* ================= REHBER / EMPLOYEE ================= */
+    /* ================= REHBER / EMPLOYEE ================= */
 
-else if (user.role === "REHBER" || user.role === "EMPLOYEE") {
+    else if (user.role === "REHBER" || user.role === "EMPLOYEE") {
 
-  // 1️⃣ mənə assign olunan tasklar
-  const { data: assignedRows } =
-    await supabaseAdmin
-      .from("task_assignees")
-      .select("task_id")
-      .eq("employee_id", user.id);
+      // 1️⃣ mənə assign olunan tasklar
+      const { data: assignedRows } =
+        await supabaseAdmin
+          .from("task_assignees")
+          .select("task_id")
+          .eq("employee_id", user.id);
 
-  const assignedTaskIds =
-    assignedRows?.map((r) => r.task_id) ?? [];
+      const assignedTaskIds =
+        assignedRows?.map((r) => r.task_id) ?? [];
 
-  // 2️⃣ mənim yaratdığım tasklar
-  const { data: createdRows } =
-    await supabaseAdmin
-      .from("tasks")
-      .select("id")
-      .eq("created_by", user.id);
+      // 2️⃣ mənim yaratdığım tasklar
+      const { data: createdRows } =
+        await supabaseAdmin
+          .from("tasks")
+          .select("id")
+          .eq("created_by", user.id);
 
-  const createdTaskIds =
-    createdRows?.map((r) => r.id) ?? [];
+      const createdTaskIds =
+        createdRows?.map((r) => r.id) ?? [];
 
-  // 3️⃣ ikisini birləşdir
-  const allTaskIds = [...assignedTaskIds, ...createdTaskIds];
+      // 3️⃣ ikisini birləşdir
+      const allTaskIds = [...assignedTaskIds, ...createdTaskIds];
 
-  const uniqueTaskIds = [...new Set(allTaskIds)];
+      const uniqueTaskIds = [...new Set(allTaskIds)];
 
-  if (!uniqueTaskIds.length) {
-    return NextResponse.json({ tasks: [] });
-  }
+      if (!uniqueTaskIds.length) {
+        return NextResponse.json({ tasks: [] });
+      }
 
-  const { data, error } = await supabaseAdmin
-    .from("tasks")
-    .select(baseSelect)
-    .in("id", uniqueTaskIds)
-    .order("sort_index");
+      const { data, error } = await supabaseAdmin
+        .from("tasks")
+        .select(baseSelect)
+        .in("id", uniqueTaskIds)
+        .order("sort_index");
 
-  if (error) throw error;
+      if (error) throw error;
 
-  tasks = data ?? [];
-}
+      tasks = data ?? [];
+    }
 
     if (!tasks.length) {
       return NextResponse.json({ tasks: [] });
@@ -235,78 +210,71 @@ else if (user.role === "REHBER" || user.role === "EMPLOYEE") {
 
     /* ===== FILES (FROM PRIVATE STORAGE BUCKET) ===== */
 
-const filesMap: Record<string, any[]> = {};
+    const { data: taskFiles } = await supabaseAdmin
+      .from("task_files")
+      .select("task_id, original_name, path, size_bytes")
+      .in("task_id", taskIds);
 
-// 🔥 paralel işləyir (çox sürətli)
-const fileResults = await Promise.all(
-  taskIds.map(async (taskId) => {
-    const { data } = await supabaseAdmin.storage
-      .from("task-files")
-      .list(taskId, {
-        limit: 100,
-        offset: 0,
+    const filesMap: Record<string, any[]> = {}; // 🔥 YALNIZ BU QALIR
+
+    (taskFiles ?? []).forEach((f) => {
+      if (!filesMap[f.task_id]) filesMap[f.task_id] = [];
+
+      filesMap[f.task_id].push({
+        name: f.original_name,
+        path: f.path,
+        size: f.size_bytes ?? 0,
       });
+    });
 
-    return { taskId, files: data ?? [] };
-  })
-);
+    const finalTasks = tasks.map((task) => {
+      const relatedAssignees =
+        assignees?.filter((a) => a.task_id === task.id) ?? [];
 
-fileResults.forEach(({ taskId, files }) => {
-  filesMap[taskId] = files.map((f) => ({
-    name: f.name.split("_").slice(1).join("_") || f.name,
-    path: `${taskId}/${f.name}`,
-    size: f.metadata?.size ?? 0,
-  }));
-});
+      const updater = Array.isArray(task.updater)
+        ? task.updater[0]
+        : task.updater;
 
-const finalTasks = tasks.map((task) => {
-  const relatedAssignees =
-    assignees?.filter((a) => a.task_id === task.id) ?? [];
+      const updatedByName = updater
+        ? `${updater.ad ?? ""} ${updater.soyad ?? ""}`.trim()
+        : null;
 
-const updater = Array.isArray(task.updater)
-  ? task.updater[0]
-  : task.updater;
+      const names: string[] = relatedAssignees
+        .map((r) => {
+          const emp = Array.isArray(r.employees)
+            ? r.employees[0]
+            : r.employees;
 
-const updatedByName = updater
-  ? `${updater.ad ?? ""} ${updater.soyad ?? ""}`.trim()
-  : null;
+          if (!emp) return null;
+          return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
+        })
+        .filter(Boolean) as string[];
 
-  const names: string[] = relatedAssignees
-    .map((r) => {
-      const emp = Array.isArray(r.employees)
-        ? r.employees[0]
-        : r.employees;
+      // 🔥 STORAGE-DAN GƏLƏN FILES
+      const relatedFiles = filesMap[task.id] ?? [];
 
-      if (!emp) return null;
-      return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
-    })
-    .filter(Boolean) as string[];
+      // 🔥 COMMENT COUNT
+      const commentCount = unreadMap[task.id] ?? 0;
 
-  // 🔥 STORAGE-DAN GƏLƏN FILES
-  const relatedFiles = filesMap[task.id] ?? [];
+      const creator = Array.isArray(task.creator)
+        ? task.creator[0]
+        : task.creator;
 
-  // 🔥 COMMENT COUNT
-  const commentCount = unreadMap[task.id] ?? 0;
+      const creatorName = creator
+        ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
+        : null;
 
-  const creator = Array.isArray(task.creator)
-    ? task.creator[0]
-    : task.creator;
+      return {
+        ...task,
+        creator_name: creatorName,
+        updated_by_name: updatedByName,
+        comment_count: commentCount,
+        assigned_to: names,
+        files: relatedFiles,
+      };
+    });
 
-  const creatorName = creator
-    ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
-    : null;
-
-  return {
-    ...task,
-    creator_name: creatorName,
-    updated_by_name: updatedByName,
-    comment_count: commentCount,
-    assigned_to: names,
-    files: relatedFiles,
-  };
-});
-
-return NextResponse.json({ tasks: finalTasks });
+    return NextResponse.json({ tasks: finalTasks });
 
   } catch (e: any) {
     console.error("TASKS GET ERROR:", e);
@@ -343,7 +311,7 @@ export async function POST(req: Request) {
     });
 
     const comments_enabled =
-  formData.get("comments_enabled") !== "false";
+      formData.get("comments_enabled") !== "false";
     const files = formData.getAll("files") as File[];
 
     if (!title) throw new Error("Title required");
@@ -383,66 +351,71 @@ export async function POST(req: Request) {
 
     /* ===== INSERT NOTIFICATIONS ===== */
 
-    const notifPayload = assignedIds.map((empId) => ({
-      user_id: empId,
-      type: "TASK_ASSIGNED",
-      title: "Yeni tapşırıq",
-      body: `Sizə "${title}" tapşırıldı`,
-      task_id: task.id,
-    }));
+   
 
 
-    const { data: notifData, error: notifErr } =
-      await supabaseAdmin.from("notifications").insert(
-        assignedIds.map((empId) => ({
-          user_id: empId,
-          type: "TASK_ASSIGNED",
-          title: "Yeni tapşırıq",
-          body: `Sizə "${title}" tapşırıldı`,
-          task_id: task.id,
-        }))
-      );
+  
 
-      /* ===== EMAIL GÖNDƏR ===== */
+    /* ===== EMAIL GÖNDƏR ===== */
 
-const { data: users } = await supabaseAdmin
-  .from("employees")
-  .select("id, email")
-  .in("id", assignedIds);
+    const { data: users } = await supabaseAdmin
+      .from("employees")
+      .select("id, email")
+      .in("id", assignedIds);
 
-for (const u of users || []) {
-  if (!u.email) continue;
-
- await sendNotificationEmail({
-  to: u.email,
-  taskTitle: title,
-  assignedBy: "Admin", // 👉 bunu dinamik də edə bilərik
-  taskId: task.id,
+   void Promise.all(
+  (users || []).map((u) => {
+    if (!u.email) return Promise.resolve();
+    return sendNotificationEmail({
+      to: u.email,
+      taskTitle: title,
+      assignedBy: "Admin",
+      taskId: task.id,
+    });
+  })
+).catch((err) => {
+  console.error("EMAIL SEND ERROR:", err);
 });
-}
 
     /* ===== FILE UPLOAD (optional) ===== */
 
     if (files.length > 0) {
-      for (const file of files) {
-        const fileExt = file.name.split(".").pop();
-        const filePath = `${task.id}/${Date.now()}_${file.name}`;
+  void Promise.all(
+    files.map(async (file) => {
+     const safeName = file.name
+  .normalize("NFKD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^\w.\-]/g, "_");
 
-        const { error: uploadError } =
-          await supabaseAdmin.storage
-            .from("task-files")
-            .upload(filePath, file);
+      const filePath = `${task.id}/${Date.now()}_${safeName}`;
 
-        if (!uploadError) {
-          await supabaseAdmin.from("task_files").insert({
-            task_id: task.id,
-            original_name: file.name,
-            path: filePath,
-            size_bytes: file.size,
-          });
-        }
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("task-files")
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error("TASK FILE UPLOAD ERROR:", uploadError);
+        return;
       }
-    }
+
+      const { error: insertError } = await supabaseAdmin
+        .from("task_files")
+        .insert({
+          task_id: task.id,
+          uploaded_by: user.id,
+          original_name: file.name,
+          path: filePath,
+          size_bytes: file.size,
+        });
+
+      if (insertError) {
+        console.error("TASK FILE INSERT ERROR:", insertError);
+      }
+    })
+  ).catch((err) => {
+    console.error("TASK FILE BACKGROUND ERROR:", err);
+  });
+}
 
     return NextResponse.json({ task });
 

@@ -129,7 +129,7 @@ function getNewSortIndex(list: Task[], targetIndex: number) {
   // place between neighbors if possible
   if (typeof prevVal === "number" && typeof nextVal === "number") {
     if (prevVal === nextVal) return prevVal + 1;
-    return prevVal + (nextVal - prevVal) / 2;
+    return Math.floor(prevVal + (nextVal - prevVal) / 2);
   }
   // to the top
   if (typeof nextVal === "number" && prevVal == null) {
@@ -140,7 +140,7 @@ function getNewSortIndex(list: Task[], targetIndex: number) {
     return prevVal + 1000;
   }
   // fallback
-  return Date.now();
+  return Math.floor(Date.now());
 }
 
 function formatDMY(date?: string | null, withTime = false) {
@@ -413,17 +413,14 @@ export default function TasksPage() {
   // const router = useRouter();
   const { user, loading } = useAuth();
   useEffect(() => {
-    console.log("TASKS PAGE AUTH:", {
-      loading,
-      userId: user?.id ?? null,
-      role: (user as any)?.role ?? null,
-    });
+   
   }, [loading, user]);
   const [permissions, setPermissions] = useState<string[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const [rawTasks, setRawTasks] = useState<Task[]>([]);
+  const hasFetched = useRef(false);
   const [tasksBy, setTasksBy] = useState<TasksByStatus>(() => groupByStatus([]));
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -699,7 +696,7 @@ export default function TasksPage() {
 
     setRawTasks(tasks);
     setTasksBy(groupByStatus(tasks));
-  }, [getToken]);
+  }, []);
 
 
 
@@ -801,8 +798,11 @@ export default function TasksPage() {
     if (loading) return;
     if (!user?.id) return;
 
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     loadTasks();
-  }, [loading, user?.id, loadTasks]);
+  }, [loading, user?.id]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -841,7 +841,30 @@ export default function TasksPage() {
       supabase.removeChannel(channel);
     };
   }, [user?.id, loadTasks]);
+/* ================= REALTIME TASK FILES ================= */
 
+useEffect(() => {
+  if (!user?.id) return;
+
+  const channel = supabase
+    .channel("task-files-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "task_files",
+      },
+      () => {
+        loadTasks(); // 🔥 file gələndə UI refresh
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user?.id, loadTasks]);
   useEffect(() => {
     if (!user?.id) return;
 
@@ -886,38 +909,23 @@ export default function TasksPage() {
       const token = await getToken();
       if (!token) return;
 
-      const res = await fetch(`/api/tasks/${viewTask.id}/comments`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      setComments([]); // 🔥 dərhal boşalt
 
+      const [res] = await Promise.all([
+        fetch(`/api/tasks/${viewTask.id}/comments`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }),
 
-      });
-
-      // 🔥 MARK COMMENTS AS READ
-      await fetch(`/api/tasks/${viewTask.id}/comments/read`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      // 🔥 BADGE RESET
-      setTasksBy((prev) => {
-        const next = { ...prev };
-
-        for (const st of STATUSES) {
-          next[st] = next[st].map((t) =>
-            t.id === viewTask.id
-              ? { ...t, comment_count: 0 }
-              : t
-          );
-        }
-
-        return next;
-      });
-
+        fetch(`/api/tasks/${viewTask.id}/comments/read`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+      ]);
 
       if (!res.ok) {
         console.error("COMMENT LOAD ERROR:", await res.text());
@@ -1014,26 +1022,19 @@ export default function TasksPage() {
         return;
       }
 
-      const text = await res.text()
-
-      let data = null
-      try {
-        data = JSON.parse(text)
-      } catch (e) {
-        console.error("JSON parse error:", e)
-      }
+      // 🔥 LOCAL COMMENT CREATE
+      const newComment = {
+        id: Date.now(),
+        message: html,
+        created_at: new Date().toISOString(),
+        author_id: user.id,
+        author_name: user.user_metadata?.full_name || "You",
+        files: uploaded,
+        reads: [],
+      };
 
       // 🔥 UI UPDATE
-      setComments((prev) => [
-        {
-          ...data.comment,
-          files: Array.isArray(data.comment.files)
-            ? data.comment.files
-            : [],
-        },
-        ...prev,
-      ]);
-
+      setComments((prev) => [newComment, ...prev]);
       // 🔥 COMMENT COUNT INCREMENT
       setTasksBy((prev) => {
         const next = { ...prev };
@@ -1166,7 +1167,10 @@ export default function TasksPage() {
       pushActivity(`• "${moved.title}" → ${targetStatus}`);
 
       try {
-        await updateTask(activeId, { status: targetStatus, sort_index: newSort });
+       await updateTask(activeId, { 
+  status: targetStatus, 
+  sort_index: Math.floor(newSort) 
+});
         // refresh in background (optional)
         // loadTasks();
       } catch (err: any) {
@@ -2610,6 +2614,9 @@ export default function TasksPage() {
               });
               setCreateOpen(false);
               loadTasks();
+              setTimeout(() => {
+  loadTasks();
+}, 1500);
             } catch {
               setTasksBy(snapshot);
               pushActivity(`• Create failed "${tempTask.title}"`);
