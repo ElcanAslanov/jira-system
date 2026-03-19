@@ -589,25 +589,21 @@ export default function TasksPage() {
  useEffect(() => {
   if (!user?.id) return;
 
-  const roleId = (user as any)?.role_id;
-
-  if (!roleId) {
-    console.warn("ROLE_ID YOXDUR - SKIP");
-    return;
-  }
-
   async function loadPermissions() {
 
       // 🔹 ROLE NAME FETCH
-      const { data: roleData } = await supabase
-        .from("roles")
-        .select("name")
-        .eq("id", roleId)
-        .single();
+          const { data: employee } = await supabase
+      .from("employees")
+      .select("role_id")
+      .eq("user_id", user.id)
+      .single();
 
-      if (roleData?.name) {
-        setRoleName(roleData.name);
-      }
+       const roleId = employee?.role_id;
+
+    if (!roleId) {
+      console.warn("ROLE_ID TAPILMADI");
+      return;
+    }
 
       // 🔹 ROLE PERMISSIONS
       const { data: rolePerms } = await supabase
