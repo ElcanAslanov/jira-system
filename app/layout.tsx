@@ -6,7 +6,7 @@ import ClientProvider from "@/app/components/ClientProvider"; // 🔥 əlavə ol
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Jira System",
+  title: "Cahan Flow",
   description: "Task management system",
 };
 

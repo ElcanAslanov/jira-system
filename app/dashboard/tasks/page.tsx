@@ -657,14 +657,28 @@ export default function TasksPage() {
   }, []);
 
   const getToken = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
-  }, []);
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    console.error("SESSION ERROR:", error);
+    return null;
+  }
+
+  const token = data?.session?.access_token;
+
+  if (!token) {
+    console.warn("NO TOKEN YET");
+  }
+
+  return token;
+}, []);
 
   const loadTasks = useCallback(async () => {
     const token = await getToken();
-    if (!token) return;
-
+    if (!token) {
+    console.warn("LOAD TASKS SKIPPED - NO TOKEN");
+    return;
+  }
     const res = await fetch("/api/tasks", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -793,15 +807,23 @@ export default function TasksPage() {
     [getToken, user?.id, user]
   );
 
-  useEffect(() => {
-    if (loading) return;
-    if (!user?.id) return;
+ useEffect(() => {
+  if (loading) return;
+  if (!user?.id) return;
 
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+  async function safeLoad() {
+    const token = await getToken();
+
+    if (!token) return;
 
     loadTasks();
-  }, [loading, user?.id]);
+  }
+
+  if (!hasFetched.current) {
+    hasFetched.current = true;
+    safeLoad();
+  }
+}, [loading, user?.id, getToken, loadTasks]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
