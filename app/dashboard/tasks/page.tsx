@@ -586,16 +586,23 @@ export default function TasksPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  useEffect(() => {
-    if (!user?.id) return;
+ useEffect(() => {
+  if (!user?.id) return;
 
-    async function loadPermissions() {
+  const roleId = (user as any)?.role_id;
+
+  if (!roleId) {
+    console.warn("ROLE_ID YOXDUR - SKIP");
+    return;
+  }
+
+  async function loadPermissions() {
 
       // 🔹 ROLE NAME FETCH
       const { data: roleData } = await supabase
         .from("roles")
         .select("name")
-        .eq("id", (user as any)?.role_id)
+        .eq("id", roleId)
         .single();
 
       if (roleData?.name) {
@@ -606,7 +613,7 @@ export default function TasksPage() {
       const { data: rolePerms } = await supabase
         .from("role_permissions")
         .select("permission_key")
-        .eq("role_id", (user as any)?.role_id);
+        .eq("role_id", roleId);
       // 🔹 USER OVERRIDE PERMISSIONS
       const { data: userPerms } = await supabase
         .from("user_permissions")
