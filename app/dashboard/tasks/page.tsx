@@ -2952,18 +2952,18 @@ const TaskCard = React.memo(function TaskCard({
     }
   }
 
-  const bgColor =
-    dueStatus === "overdue"
-      ? "bg-red-50 border-red-300"
-      : dueStatus === "soon"
-        ? "bg-yellow-50 border-yellow-300"
-        : task.status === "TODO"
-          ? "bg-white border-slate-200"
-          : task.status === "IN_PROGRESS"
-            ? "bg-blue-50 border-blue-200"
-            : task.status === "DONE"
-              ? "bg-green-50 border-green-200"
-              : "bg-red-50 border-red-200";
+const bgColor =
+  task.status === "DONE"
+    ? "bg-green-50 border-green-200"
+    : task.status === "CANCELLED"
+      ? "bg-red-50 border-red-200"
+      : dueStatus === "overdue"
+        ? "bg-red-50 border-red-300"
+        : dueStatus === "soon"
+          ? "bg-yellow-50 border-yellow-300"
+          : task.status === "TODO"
+            ? "bg-white border-slate-200"
+            : "bg-blue-50 border-blue-200";
 
   const {
     attributes,
@@ -3240,19 +3240,29 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
           {/* STATUS */}
           <div>
             <label className="text-sm font-medium text-gray-700">Status</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 mt-1"
-              value={form.status as string}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, status: e.target.value as any }))
-              }
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace("_", " ")}
-                </option>
-              ))}
-            </select>
+      <select
+  className="w-full border rounded-lg px-3 py-2 mt-1"
+  value={form.status as string}
+  onChange={(e) =>
+    setForm((p) => ({ ...p, status: e.target.value as any }))
+  }
+>
+  {STATUSES.map((s) => (
+    <option key={s} value={s}>
+      {
+        s === "TODO"
+          ? t.todo
+          : s === "IN_PROGRESS"
+          ? t.inProgress
+          : s === "DONE"
+          ? t.taskDone
+          : s === "CANCELLED"
+          ? t.cancelled
+          : s
+      }
+    </option>
+  ))}
+</select>
           </div>
 
           {/* GRID SECTION */}
