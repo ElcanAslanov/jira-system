@@ -43,7 +43,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
      FULL MENU STRUCTURE
   ==============================*/
 
- const groups: Group[] = useMemo(() => [
+  const groups: Group[] = useMemo(() => [
     {
       title: t.dashboard,
       key: "dashboard",
@@ -111,6 +111,11 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
           label: t.newTask,
           permission: "tasks.create",
         },
+        {
+          href: "/dashboard/tasks/task-log",
+          label: "Task Log",
+          permission: "tasks.view", // eyni permission istifadə edirik
+        },
       ],
     },
     {
@@ -140,24 +145,24 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         },
       ],
     },
-  ] , [t]);
+  ], [t]);
 
   /* =============================
      LOAD PERMISSIONS + EMPLOYEE
   ==============================*/
 
   useEffect(() => {
-   if (!user?.id) {
-  setPermissions([]);
-  return;
-}
+    if (!user?.id) {
+      setPermissions([]);
+      return;
+    }
 
     let mounted = true;
 
     async function loadPermissions() {
       if (!user || permissions.length > 0) return;
       try {
-        
+
         // 🚀 EMPLOYEE-ni tez yüklə
         const { data: employee } = await supabase
           .from("employees")
@@ -319,17 +324,17 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
             {openGroup === group.key && (
               <div className="mt-2 ml-4 space-y-1">
                 {group.links.map((link) => {
-                const isActive =
-  pathname === link.href;
+                  const isActive =
+                    pathname === link.href;
 
                   return (
                     <Link
                       key={link.href}
                       href={link.href}
-                       prefetch={false}
-                        onClick={() => {
-    onClose?.(); // 🔥 ƏSAS FIX
-  }}
+                      prefetch={false}
+                      onClick={() => {
+                        onClose?.(); // 🔥 ƏSAS FIX
+                      }}
                       className={`block px-4 py-2 rounded-lg text-sm transition ${isActive
                         ? "bg-[#e42526]/20 text-white"
                         : "text-gray-400 hover:bg-white/5 hover:text-white"
@@ -350,9 +355,9 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         {permissions.includes("settings.view") && (
           <Link
             href="/dashboard/settings"
-             onClick={() => {
-    onClose?.(); // 🔥 ƏSAS FIX
-  }}
+            onClick={() => {
+              onClose?.(); // 🔥 ƏSAS FIX
+            }}
             className={`block w-full text-center py-2.5 rounded-xl text-sm transition ${pathname === "/dashboard/settings"
               ? "bg-[#e42526]/20 text-white"
               : "bg-white/5 hover:bg-white/10 text-gray-300"

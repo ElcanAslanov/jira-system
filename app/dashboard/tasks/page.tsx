@@ -792,23 +792,27 @@ export default function TasksPage() {
   );
 
   const deleteTask = useCallback(
-    async (taskId: string) => {
-      const token = await getToken();
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "DELETE",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          "x-user-id": user?.id ?? "",
-          "x-user-role": (user as any)?.role ?? "",
-        },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Delete failed");
-      }
-    },
-    [getToken, user?.id, user]
-  );
+  async (taskId: string) => {
+    const token = await getToken();
+
+    const res = await fetch(`/api/tasks`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "x-user-id": user?.id ?? "",
+        "x-user-role": (user as any)?.role ?? "",
+      },
+      body: JSON.stringify({ id: taskId }), // 🔥 ƏN VACİB
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error || "Delete failed");
+    }
+  },
+  [getToken, user?.id, user]
+);
 
  useEffect(() => {
   if (loading) return;

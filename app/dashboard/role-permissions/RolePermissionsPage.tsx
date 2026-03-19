@@ -68,6 +68,7 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
       permissions: [
         "tasks.view",
         "tasks.create",
+        "tasks.log.view", // 👈 əlavə
       ],
     },
     {

@@ -66,6 +66,8 @@ export async function GET(req: Request) {
       );
     }
 
+    const { searchParams } = new URL(req.url);
+    const isDeleted = searchParams.get("deleted") === "true";
 
     let tasks: any[] = [];
 
@@ -83,11 +85,20 @@ export async function GET(req: Request) {
   updated_at,
   created_by,
   updated_by,
+  deleted_at,
+  deleted_by,
+
   creator:employees!tasks_created_by_fkey (
     ad,
     soyad
   ),
+
   updater:employees!tasks_updated_by_fkey (
+    ad,
+    soyad
+  )
+
+  deleter:employees!tasks_deleted_by_fkey (
     ad,
     soyad
   )
@@ -99,6 +110,7 @@ export async function GET(req: Request) {
       const { data, error } = await supabaseAdmin
         .from("tasks")
         .select(baseSelect)
+        .eq("is_deleted", isDeleted)
         .order("sort_index");
 
       if (error) throw error;
@@ -128,7 +140,8 @@ export async function GET(req: Request) {
         await supabaseAdmin
           .from("tasks")
           .select("id")
-          .eq("created_by", user.id);
+          .eq("created_by", user.id)
+          .eq("is_deleted", isDeleted);
 
       const createdTaskIds =
         createdRows?.map((r) => r.id) ?? [];
@@ -146,6 +159,7 @@ export async function GET(req: Request) {
         .from("tasks")
         .select(baseSelect)
         .in("id", uniqueTaskIds)
+        .eq("is_deleted", isDeleted)
         .order("sort_index");
 
       if (error) throw error;
@@ -158,6 +172,14 @@ export async function GET(req: Request) {
     }
 
     const taskIds = tasks.map((t) => t.id);
+    const deleterIds = tasks
+      .map((t) => t.deleted_by)
+      .filter(Boolean);
+
+    const { data: deleters } = await supabaseAdmin
+      .from("employees")
+      .select("id, ad, soyad")
+      .in("id", deleterIds);
 
     /* ===== COMMENT COUNTS ===== */
 
@@ -227,52 +249,55 @@ export async function GET(req: Request) {
       });
     });
 
-    const finalTasks = tasks.map((task) => {
-      const relatedAssignees =
-        assignees?.filter((a) => a.task_id === task.id) ?? [];
+   const finalTasks = tasks.map((task) => {
+  const relatedAssignees =
+    assignees?.filter((a) => a.task_id === task.id) ?? [];
 
-      const updater = Array.isArray(task.updater)
-        ? task.updater[0]
-        : task.updater;
+  const updater = Array.isArray(task.updater)
+    ? task.updater[0]
+    : task.updater;
 
-      const updatedByName = updater
-        ? `${updater.ad ?? ""} ${updater.soyad ?? ""}`.trim()
-        : null;
+  const updatedByName = updater
+    ? `${updater.ad ?? ""} ${updater.soyad ?? ""}`.trim()
+    : null;
 
-      const names: string[] = relatedAssignees
-        .map((r) => {
-          const emp = Array.isArray(r.employees)
-            ? r.employees[0]
-            : r.employees;
+  const names: string[] = relatedAssignees
+    .map((r) => {
+      const emp = Array.isArray(r.employees)
+        ? r.employees[0]
+        : r.employees;
 
-          if (!emp) return null;
-          return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
-        })
-        .filter(Boolean) as string[];
+      if (!emp) return null;
+      return `${emp.ad ?? ""} ${emp.soyad ?? ""}`.trim();
+    })
+    .filter(Boolean) as string[];
 
-      // 🔥 STORAGE-DAN GƏLƏN FILES
-      const relatedFiles = filesMap[task.id] ?? [];
+  // ✅ BURDA DELETER TAP
+  const deleter = deleters?.find(
+    (d) => d.id === task.deleted_by
+  );
 
-      // 🔥 COMMENT COUNT
-      const commentCount = unreadMap[task.id] ?? 0;
+  const relatedFiles = filesMap[task.id] ?? [];
+  const commentCount = unreadMap[task.id] ?? 0;
 
-      const creator = Array.isArray(task.creator)
-        ? task.creator[0]
-        : task.creator;
+  const creator = Array.isArray(task.creator)
+    ? task.creator[0]
+    : task.creator;
 
-      const creatorName = creator
-        ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
-        : null;
+  const creatorName = creator
+    ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
+    : null;
 
-      return {
-        ...task,
-        creator_name: creatorName,
-        updated_by_name: updatedByName,
-        comment_count: commentCount,
-        assigned_to: names,
-        files: relatedFiles,
-      };
-    });
+  return {
+    ...task,
+    creator_name: creatorName,
+    updated_by_name: updatedByName,
+    comment_count: commentCount,
+    assigned_to: names,
+    files: relatedFiles,
+    deleter, // 🔥 ƏN VACİB
+  };
+});
 
     return NextResponse.json({ tasks: finalTasks });
 
@@ -349,84 +374,84 @@ export async function POST(req: Request) {
       }))
     );
 
- 
 
-  
+
+
 
     /* ===== EMAIL GÖNDƏR ===== */
 
-   
 
-// ✅ BURAYA ƏLAVƏ ET
-const { data: currentUser } = await supabaseAdmin
-  .from("employees")
-  .select("ad, soyad")
-  .eq("id", user.id)
-  .single();
 
-const assignedByName = currentUser
-  ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
-  : "Admin";
+    // ✅ BURAYA ƏLAVƏ ET
+    const { data: currentUser } = await supabaseAdmin
+      .from("employees")
+      .select("ad, soyad")
+      .eq("id", user.id)
+      .single();
 
-// sonra users fetch
-const { data: users } = await supabaseAdmin
-  .from("employees")
-  .select("id, email")
-  .in("id", assignedIds);
+    const assignedByName = currentUser
+      ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+      : "Admin";
 
-// və email
-void Promise.all(
-  (users || []).map((u) => {
-    if (!u.email) return Promise.resolve();
+    // sonra users fetch
+    const { data: users } = await supabaseAdmin
+      .from("employees")
+      .select("id, email")
+      .in("id", assignedIds);
 
-    return sendNotificationEmail({
-      to: u.email,
-      taskTitle: title,
-      assignedBy: assignedByName, // ✅ artıq işləyəcək
-      taskId: task.id,
-    });
-  })
-);
+    // və email
+    void Promise.all(
+      (users || []).map((u) => {
+        if (!u.email) return Promise.resolve();
+
+        return sendNotificationEmail({
+          to: u.email,
+          taskTitle: title,
+          assignedBy: assignedByName, // ✅ artıq işləyəcək
+          taskId: task.id,
+        });
+      })
+    );
 
     /* ===== FILE UPLOAD (optional) ===== */
 
     if (files.length > 0) {
-  void Promise.all(
-    files.map(async (file) => {
-     const safeName = file.name
-  .normalize("NFKD")
-  .replace(/[\u0300-\u036f]/g, "")
-  .replace(/[^\w.\-]/g, "_");
+      void Promise.all(
+        files.map(async (file) => {
+          const safeName = file.name
+            .normalize("NFKD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^\w.\-]/g, "_");
 
-      const filePath = `${task.id}/${Date.now()}_${safeName}`;
+          const filePath = `${task.id}/${Date.now()}_${safeName}`;
 
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from("task-files")
-        .upload(filePath, file);
+          const { error: uploadError } = await supabaseAdmin.storage
+            .from("task-files")
+            .upload(filePath, file);
 
-      if (uploadError) {
-        console.error("TASK FILE UPLOAD ERROR:", uploadError);
-        return;
-      }
+          if (uploadError) {
+            console.error("TASK FILE UPLOAD ERROR:", uploadError);
+            return;
+          }
 
-      const { error: insertError } = await supabaseAdmin
-        .from("task_files")
-        .insert({
-          task_id: task.id,
-          uploaded_by: user.id,
-          original_name: file.name,
-          path: filePath,
-          size_bytes: file.size,
-        });
+          const { error: insertError } = await supabaseAdmin
+            .from("task_files")
+            .insert({
+              task_id: task.id,
+              uploaded_by: user.id,
+              original_name: file.name,
+              path: filePath,
+              size_bytes: file.size,
+            });
 
-      if (insertError) {
-        console.error("TASK FILE INSERT ERROR:", insertError);
-      }
-    })
-  ).catch((err) => {
-    console.error("TASK FILE BACKGROUND ERROR:", err);
-  });
-}
+          if (insertError) {
+            console.error("TASK FILE INSERT ERROR:", insertError);
+          }
+        })
+      ).catch((err) => {
+        console.error("TASK FILE BACKGROUND ERROR:", err);
+      });
+    }
 
     return NextResponse.json({ task });
 
@@ -441,4 +466,87 @@ void Promise.all(
   }
 }
 
-//burdan sora basladim
+export async function DELETE(req: Request) {
+  try {
+    console.log("🔥 DELETE ROUTE IS HIT");
+    const user = await getRequestUser(req);
+
+    const { id, hard } = await req.json();
+
+    if (!id) throw new Error("Task id required");
+
+    // ❌ HARD DELETE
+    if (hard) {
+      const { error } = await supabaseAdmin
+        .from("tasks")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      return NextResponse.json({ success: true });
+    }
+
+    // ♻️ SOFT DELETE
+    const { data, error } = await supabaseAdmin
+      .from("tasks")
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id,
+      })
+      .eq("id", id.trim()) // 🔥 BURA ƏLAVƏ ET
+      .select();
+
+    console.log("SILINEN ID:", id);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+
+  } catch (e: any) {
+    console.error("TASK DELETE ERROR:", e);
+
+    return NextResponse.json(
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const user = await getRequestUser(req);
+
+    const { id, action } = await req.json();
+
+    if (action !== "restore") {
+      return NextResponse.json(
+        { error: "Invalid action" },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabaseAdmin
+      .from("tasks")
+      .update({
+        is_deleted: false,
+        deleted_at: null,
+        deleted_by: null,
+      })
+      .eq("id", id);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+
+  } catch (e: any) {
+    console.error("TASK RESTORE ERROR:", e);
+
+    return NextResponse.json(
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
