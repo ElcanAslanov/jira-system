@@ -248,11 +248,7 @@ const { data: subordinates } = await supabase
 const subordinateIds = subordinates?.map((s: any) => s.employee_id) || [];
 
 // Əgər DB-də heç bir qeyd yoxdursa → subordinate-ları default seç
-if (guideIds.length === 0) {
-  setSelectedGuides(subordinateIds);
-} else {
-  setSelectedGuides(guideIds);
-}
+setSelectedGuides(guideIds);
 
   setLoading(false);
 }
