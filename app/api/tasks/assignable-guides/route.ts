@@ -18,20 +18,24 @@ async function getRequestUser(req: Request) {
   const { data: authData, error: authError } =
     await supabaseAdmin.auth.getUser(token);
 
-  if (authError || !authData?.user)
+  if (authError || !authData?.user) {
     throw new Error("Unauthorized");
+  }
 
-  const { data: employee } = await supabaseAdmin
+  const { data: employee, error: employeeError } = await supabaseAdmin
     .from("employees")
-    .select("id, role_id")
+    .select("id, user_id, role_id")
     .eq("user_id", authData.user.id)
     .single();
 
-  if (!employee) throw new Error("Employee not found");
+  if (employeeError || !employee) {
+    throw new Error("Employee not found");
+  }
 
   return {
-    id: employee.id,
-    role_id: employee.role_id
+    employeeId: employee.id,      // employees.id
+    userId: authData.user.id,     // auth user id
+    roleId: employee.role_id,
   };
 }
 
@@ -41,99 +45,77 @@ export async function GET(req: Request) {
   try {
     const user = await getRequestUser(req);
 
-    /* ================= SUBORDINATES ================= */
-
-    const { data: subordinates } =
-      await supabaseAdmin
-        .from("employee_guides")
-        .select(`
-          employee_id,
-          employees (
-            id,
-            ad,
-            soyad
-          )
-        `)
-        .eq("guide_id", user.id);
-
-    const subordinateEmployees =
-      subordinates?.map((r: any) => r.employees) ?? [];
-
     /* ================= ROLE COMPANY ACCESS ================= */
 
-/* ================= ROLE COMPANY ACCESS ================= */
-
-const { data: roleCompanies } =
-  await supabaseAdmin
-    .from("role_company_access")
-    .select("company_id")
-    .eq("role_id", user.role_id);
-
-/* ================= USER COMPANY OVERRIDES ================= */
-
-const { data: userCompanies } =
-  await supabaseAdmin
-    .from("user_company_access")
-    .select("company_id, allowed")
-    .eq("user_id", user.id);
-
-/* ================= FINAL COMPANIES ================= */
-
-const base = new Set(
-  roleCompanies?.map((c: any) => c.company_id) ?? []
-);
-
-userCompanies?.forEach((c: any) => {
-  if (c.allowed) base.add(c.company_id);
-  else base.delete(c.company_id);
-});
-
-const companyIds = Array.from(base);
-
- 
-
-    /* ================= PERMISSION GUIDES ================= */
-
-    const { data: roleGuides } =
+    const { data: roleCompanies, error: roleCompaniesError } =
       await supabaseAdmin
-        .from("role_assignable_guides")
-        .select("guide_id")
-        .eq("role_id", user.role_id);
+        .from("role_company_access")
+        .select("company_id")
+        .eq("role_id", user.roleId);
 
-    const guideIds =
-      roleGuides?.map(r => r.guide_id) ?? [];
+    if (roleCompaniesError) throw roleCompaniesError;
 
-    let permissionGuides: any[] = [];
+    /* ================= USER COMPANY OVERRIDES ================= */
 
-    if (guideIds.length) {
-      const { data } =
-        await supabaseAdmin
-          .from("employees")
-          .select("id, ad, soyad")
-          .in("id", guideIds);
+    const { data: userCompanies, error: userCompaniesError } =
+      await supabaseAdmin
+        .from("user_company_access")
+        .select("company_id, allowed")
+        .eq("user_id", user.userId);
 
-      permissionGuides = data ?? [];
-    }
+    if (userCompaniesError) throw userCompaniesError;
 
-    /* ================= MERGE ================= */
+    /* ================= FINAL COMPANIES ================= */
 
- const allEmployees = [
-  ...subordinateEmployees,
-  ...permissionGuides
-];
+    const base = new Set(
+      roleCompanies?.map((c: any) => c.company_id) ?? []
+    );
 
-    /* ================= UNIQUE + REMOVE SELF ================= */
-
-    const unique = Object.values(
-      Object.fromEntries(
-        allEmployees.map((e: any) => [e.id, e])
-      )
-    ).filter((e: any) => e.id !== user.id); // 🔥 kendisini çıkar
-
-    return NextResponse.json({
-      employees: unique
+    userCompanies?.forEach((c: any) => {
+      if (c.allowed) base.add(c.company_id);
+      else base.delete(c.company_id);
     });
 
+    const companyIds = Array.from(base);
+
+    /* ================= USER PERMISSION GUIDES ================= */
+
+    const { data: userGuides, error: userGuidesError } =
+      await supabaseAdmin
+        .from("user_assignable_guides")
+        .select("guide_id")
+        .eq("user_id", user.userId);
+
+    if (userGuidesError) throw userGuidesError;
+
+    const guideIds = userGuides?.map((r: any) => r.guide_id) ?? [];
+
+    if (!guideIds.length) {
+      return NextResponse.json({ employees: [] });
+    }
+
+    /* ================= FETCH EMPLOYEES ================= */
+
+    let query = supabaseAdmin
+      .from("employees")
+      .select("id, ad, soyad, company_id")
+      .in("id", guideIds);
+
+    if (companyIds.length > 0) {
+      query = query.in("company_id", companyIds);
+    }
+
+    const { data: employees, error: employeesError } = await query;
+
+    if (employeesError) throw employeesError;
+
+    const finalEmployees = (employees ?? [])
+      .filter((e: any) => e.id !== user.employeeId)
+      .map(({ id, ad, soyad }) => ({ id, ad, soyad }));
+
+    return NextResponse.json({
+      employees: finalEmployees,
+    });
   } catch (error: any) {
     console.error("ASSIGNABLE EMPLOYEES ERROR:", error);
 
@@ -143,5 +125,3 @@ const companyIds = Array.from(base);
     );
   }
 }
-
-//burdan sora basladim
