@@ -114,7 +114,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         {
           href: "/dashboard/tasks/task-log",
           label: "Task Log",
-          permission: "tasks.view", // eyni permission istifadə edirik
+          permission: "tasks.log.view",
         },
       ],
     },
