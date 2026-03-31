@@ -202,10 +202,10 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
     .select("company_id,allowed")
     .eq("user_id", selectedUserId);
 
-  const { data: userGuides } = await supabase
-    .from("role_assignable_guides")
-    .select("guide_id")
-    .eq("role_id", roleId);
+ const { data: userGuides } = await supabase
+  .from("user_assignable_guides")
+  .select("guide_id")
+  .eq("user_id", selectedUserId);
 
 const { data: employeeRow } = await supabase
   .from("employees")
@@ -387,20 +387,20 @@ if (!roleId) {
     // REHBER YETKILERI
 
 await supabase
-  .from("role_assignable_guides")
+  .from("user_assignable_guides")
   .delete()
-  .eq("role_id", roleId);
+  .eq("user_id", selectedUserId);
 
 if (selectedGuides.length > 0) {
-  await supabase.from("role_assignable_guides").insert(
+  await supabase.from("user_assignable_guides").insert(
     selectedGuides.map((guide_id) => ({
-      role_id: roleId,
+      user_id: selectedUserId,
       guide_id,
-      company_id: guides.find(g => g.id === guide_id)?.company_id
+      company_id:
+        guides.find((g) => g.id === guide_id)?.company_id ?? null,
     }))
   );
 }
-
     if (companyRows.length > 0) {
       await supabase.from("user_company_access").insert(companyRows);
     }
