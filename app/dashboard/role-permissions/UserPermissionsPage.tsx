@@ -170,16 +170,19 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   
   /* ================= LOAD ROLE + USER PERMS ================= */
 
-  useEffect(() => {
-    if (!selectedUserId) return;
+ useEffect(() => {
+  if (!selectedUserId) return;
 
-    const user = users.find((u) => u.user_id === selectedUserId);
-    if (!user) return;
+  // 🔥 ƏVVƏL STATE SIFIRLA
+  setSelectedGuides([]);
 
-    loadPermissions(user.role_id);
-  }, [selectedUserId, users]);
+  const user = users.find((u) => u.user_id === selectedUserId);
+  if (!user) return;
 
- async function loadPermissions(roleId: string) {
+  loadPermissions(user.role_id, selectedUserId);
+}, [selectedUserId, users]);
+
+ async function loadPermissions(roleId: string, userId: string) {
   setLoading(true);
 
   const { data: roleData } = await supabase
@@ -190,7 +193,7 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   const { data: userData } = await supabase
     .from("user_permissions")
     .select("permission_key,allowed")
-    .eq("user_id", selectedUserId);
+    .eq("user_id", userId);
 
   const { data: roleCompData } = await supabase
     .from("role_company_access")
@@ -200,17 +203,17 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   const { data: userCompData } = await supabase
     .from("user_company_access")
     .select("company_id,allowed")
-    .eq("user_id", selectedUserId);
+    .eq("user_id", userId);
 
  const { data: userGuides } = await supabase
   .from("user_assignable_guides")
   .select("guide_id")
-  .eq("user_id", selectedUserId);
+  .eq("user_id", userId);
 
 const { data: employeeRow } = await supabase
   .from("employees")
   .select("id")
-  .eq("user_id", selectedUserId)
+  .eq("user_id", userId)
   .single();
 
 const { data: subordinates } = await supabase
@@ -245,10 +248,14 @@ const { data: subordinates } = await supabase
   );
 
  const guideIds = userGuides?.map((g: any) => g.guide_id) || [];
+
+ if (userId !== selectedUserId) return;
+
+
 const subordinateIds = subordinates?.map((s: any) => s.employee_id) || [];
 
 // Əgər DB-də heç bir qeyd yoxdursa → subordinate-ları default seç
-setSelectedGuides(guideIds);
+setSelectedGuides([...guideIds]);
 
   setLoading(false);
 }
