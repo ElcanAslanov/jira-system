@@ -29,7 +29,7 @@ export default function UserPermissionsPage() {
   const { lang } = useLang();
 const t = translations[lang];
   const [guides, setGuides] = useState<any[]>([]);
-const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
+const [selectedGuides, setSelectedGuides] = useState<number[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -150,6 +150,7 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
   }
 
   async function loadGuides(companyIds: number[]) {
+    console.log("🏢 FINAL COMPANIES:", companyIds);
   const { data } = await supabase
     .from("employees")
     .select(`
@@ -162,6 +163,8 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
     .in("company_id", companyIds)
     .in("roles.name", ["REHBER", "EMPLOYEE"]) // 🔥 dəyişiklik burada
     .neq("user_id", selectedUserId); // 🔥 seçilən useri çıxar
+
+    console.log("👥 LOADED GUIDES:", data);
 
   setGuides(data || []);
 }
@@ -183,6 +186,7 @@ const [selectedGuides, setSelectedGuides] = useState<string[]>([]);
 }, [selectedUserId, users]);
 
  async function loadPermissions(roleId: string, userId: string) {
+  console.log("🔄 LOAD USER:", userId);
   setLoading(true);
 
   const { data: roleData } = await supabase
@@ -249,6 +253,9 @@ const { data: subordinates } = await supabase
 
  const guideIds = userGuides?.map((g: any) => g.guide_id) || [];
 
+ console.log("📥 GUIDES FROM DB:", userGuides);
+console.log("📥 GUIDE IDS:", guideIds);
+
  if (userId !== selectedUserId) return;
 
 
@@ -306,7 +313,7 @@ setSelectedGuides([...guideIds]);
     );
   }
 
-  function toggleGuide(id: string) {
+function toggleGuide(id: number) {
   setSelectedGuides((prev) =>
     prev.includes(id)
       ? prev.filter((g) => g !== id)
@@ -335,9 +342,16 @@ setSelectedGuides([...guideIds]);
   /* ================= SAVE ================= */
 
   async function save() {
+
+    console.log("👤 SELECTED USER:", selectedUserId);
+console.log("📌 SELECTED GUIDES:", selectedGuides);
+console.log("📦 GUIDES LIST:", guides);
+
     setLoading(true);
     const user = users.find((u) => u.user_id === selectedUserId);
 const roleId = user?.role_id;
+
+
 
 if (!roleId) {
   alert(t.roleNotFound);
@@ -395,14 +409,20 @@ await supabase
   .eq("user_id", selectedUserId);
 
 if (selectedGuides.length > 0) {
-  await supabase.from("user_assignable_guides").insert(
-    selectedGuides.map((guide_id) => ({
-      user_id: selectedUserId,
-      guide_id,
-      company_id:
-        guides.find((g) => g.id === guide_id)?.company_id ?? null,
-    }))
-  );
+const insertPayload = selectedGuides.map((guide_id) => ({
+  user_id: selectedUserId,
+  guide_id: guide_id,
+    company_id: null, // 🔥 BURANI BELƏ ET
+}));
+
+console.log("🚀 INSERT PAYLOAD:", insertPayload);
+
+const { data, error } = await supabase
+  .from("user_assignable_guides")
+  .insert(insertPayload);
+
+console.log("✅ INSERT DATA:", data);
+console.log("❌ INSERT ERROR:", error);
 }
     if (companyRows.length > 0) {
       await supabase.from("user_company_access").insert(companyRows);
@@ -410,6 +430,8 @@ if (selectedGuides.length > 0) {
 
    alert(t.savedSuccess + " ✅");
     setLoading(false);
+ 
+    console.log("SAVING GUIDES:", selectedGuides);
   }
 
   /* ================= SEARCH ================= */
