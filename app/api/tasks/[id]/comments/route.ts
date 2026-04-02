@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-
+import { sendNotificationEmail } from "@/lib/sendEmail";
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -234,7 +234,44 @@ const { error } = await supabaseAdmin
         }))
       );
     }
+// ================= EMAIL =================
 
+console.log("🔥 COMMENT EMAIL BLOCK WORKED");
+
+// task creator (yaradan)
+const { data: creatorData } = await supabaseAdmin
+  .from("employees")
+  .select("email, ad, soyad")
+  .eq("id", task?.created_by)
+  .single();
+
+console.log("👤 CREATOR:", creatorData);
+
+// comment yazan user
+const { data: currentUser } = await supabaseAdmin
+  .from("employees")
+  .select("ad, soyad")
+  .eq("id", employeeId)
+  .single();
+
+const commenterName = currentUser
+  ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+  : "User";
+
+// mail göndər (özün yazmısansa getməsin)
+if (creatorData?.email && task?.created_by !== employeeId) {
+  console.log("📨 SENDING COMMENT EMAIL TO:", creatorData.email);
+
+  await sendNotificationEmail({
+    to: creatorData.email,
+    taskTitle: task?.title ?? "Task",
+    assignedBy: commenterName,
+    taskId: taskId,
+    type: "comment",
+  });
+
+  console.log("✅ COMMENT EMAIL SENT");
+}
     /* ================= RESPONSE ================= */
 
     const { data: emp } = await supabaseAdmin

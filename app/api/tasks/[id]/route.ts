@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendNotificationEmail } from "@/lib/sendEmail";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -139,46 +140,74 @@ if (!isStatusUpdate) {
 
     /* ================= EMPLOYEE ================= */
     // EMPLOYEE: only if assigned
-    if (user.role === "EMPLOYEE") {
-      const { data: assigned, error: asgErr } = await supabaseAdmin
-        .from("task_assignees")
-        .select("id")
-        .eq("task_id", taskId)
-        .eq("employee_id", user.id)
-        .maybeSingle();
+   if (user.role === "EMPLOYEE") {
+  const { data: assigned, error: asgErr } = await supabaseAdmin
+    .from("task_assignees")
+    .select("id")
+    .eq("task_id", taskId)
+    .eq("employee_id", user.id)
+    .maybeSingle();
 
-      if (asgErr) throw asgErr;
-      if (!assigned) {
-        return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-      }
+  if (asgErr) throw asgErr;
+  if (!assigned) {
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+  }
 
-      const newStatus = body.status ?? task.status;
+  const newStatus = body.status ?? task.status;
 
-      const { error: upErr } = await supabaseAdmin
-        .from("tasks")
-        .update({
-          status: newStatus,
-          sort_index:
-            body.sort_index !== undefined ? body.sort_index : task.sort_index,
-            updated_by: user.id,
-        })
-        .eq("id", taskId);
+  const { error: upErr } = await supabaseAdmin
+    .from("tasks")
+    .update({
+      status: newStatus,
+      sort_index:
+        body.sort_index !== undefined ? body.sort_index : task.sort_index,
+      updated_by: user.id,
+    })
+    .eq("id", taskId);
 
-      if (upErr) throw upErr;
+  if (upErr) throw upErr;
 
-      // Creator notification (if different)
-      if (newStatus !== task.status && task.created_by !== user.id) {
-        await supabaseAdmin.from("notifications").insert({
-          user_id: task.created_by,
-          type: "TASK_STATUS_CHANGED",
-          title: "Task status dəyişdi",
-          body: `Task "${task.title}" → ${newStatus}`,
-          task_id: taskId,
-        });
-      }
+  // ================= EMAIL BURDA OLMALIDIR =================
 
-      return NextResponse.json({ success: true });
+  if (body.status) {
+    console.log("🔥 EMPLOYEE STATUS BLOCK WORKED");
+
+    const { data: creatorData } = await supabaseAdmin
+      .from("employees")
+      .select("email, ad, soyad")
+      .eq("id", task.created_by)
+      .single();
+
+    console.log("CREATOR:", creatorData);
+
+    if (creatorData?.email) {
+      const { data: currentUser } = await supabaseAdmin
+        .from("employees")
+        .select("ad, soyad")
+        .eq("id", user.id)
+        .single();
+
+      const changerName = currentUser
+        ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+        : "User";
+
+      console.log("📨 SENDING EMAIL (EMPLOYEE)");
+
+      await sendNotificationEmail({
+        to: creatorData.email,
+        taskTitle: task.title,
+        assignedBy: changerName,
+        taskId: taskId,
+        type: "status_update",
+        status: body.status,
+      });
+
+      console.log("✅ EMAIL SENT (EMPLOYEE)");
     }
+  }
+
+  return NextResponse.json({ success: true });
+}
 
     /* ================= REHBER ================= */
     // REHBER: must have access to team task or own-created
@@ -233,28 +262,55 @@ if (!isStatusUpdate) {
 }
 
     /* ================= STATUS CHANGE NOTIF ================= */
-    if (body.status && body.status !== task.status) {
-      const { data: assignees, error: asgErr } = await supabaseAdmin
-        .from("task_assignees")
-        .select("employee_id")
-        .eq("task_id", taskId);
+if (body.status) {
 
-      if (asgErr) throw asgErr;
+  console.log("🔥 STATUS BLOCK WORKED");
+  console.log("OLD STATUS:", task.status);
+  console.log("NEW STATUS:", body.status);
 
-      if (assignees?.length) {
-        await supabaseAdmin.from("notifications").insert(
-          assignees
-            .filter((a) => a.employee_id !== user.id)
-            .map((a) => ({
-              user_id: a.employee_id,
-              type: "TASK_STATUS_CHANGED",
-              title: "Task status dəyişdi",
-              body: `Task "${task.title}" → ${body.status}`,
-              task_id: taskId,
-            }))
-        );
-      }
-    }
+  const { data: assignees, error: asgErr } = await supabaseAdmin
+    .from("task_assignees")
+    .select("employee_id")
+    .eq("task_id", taskId);
+
+  if (asgErr) throw asgErr;
+
+  // ===== EMAIL DEBUG =====
+  console.log("📧 TRYING TO SEND EMAIL");
+
+  const { data: creatorData } = await supabaseAdmin
+    .from("employees")
+    .select("email, ad, soyad")
+    .eq("id", task.created_by)
+    .single();
+
+  console.log("👤 CREATOR DATA:", creatorData);
+
+  if (creatorData?.email) {
+    const { data: currentUser } = await supabaseAdmin
+      .from("employees")
+      .select("ad, soyad")
+      .eq("id", user.id)
+      .single();
+
+    const changerName = currentUser
+      ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+      : "User";
+
+    console.log("📨 SENDING EMAIL TO:", creatorData.email);
+
+    await sendNotificationEmail({
+      to: creatorData.email,
+      taskTitle: task.title,
+      assignedBy: changerName,
+      taskId: taskId,
+      type: "status_update",
+      status: body.status,
+    });
+
+    console.log("✅ EMAIL SENT (STATUS)");
+  }
+}
 
     /* ================= ASSIGN CHANGE ================= */
     if (body.assigned_ids) {
