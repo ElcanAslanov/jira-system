@@ -2271,42 +2271,58 @@ const isAssignee =
                 <DrawerRow
                   label={t.files}
                   value={
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                   <div className="flex gap-2 flex-wrap break-all">
                       {viewTask.files.map((f, i) => (
-                        <button
-                          key={i}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!f?.path) return;
+                     <button
+  key={i}
+  onClick={async (e) => {
+    e.stopPropagation();
+    if (!f?.path) return;
 
-                            try {
-                              const { data, error } = await supabase.storage
-                                .from("task-files")
-                                .createSignedUrl(f.path, 60);
+    try {
+      const { data, error } = await supabase.storage
+        .from("task-files")
+        .createSignedUrl(f.path, 60);
 
-                              if (error || !data?.signedUrl) {
-                                console.error("Signed URL error:", error);
-                                return;
-                              }
+      if (error || !data?.signedUrl) {
+        console.error("Signed URL error:", error);
+        return;
+      }
 
-                              // 🔥 SAFEST & UNLIMITED DOWNLOAD
-                              window.location.href = data.signedUrl;
+      window.location.href = data.signedUrl;
+    } catch (err) {
+      console.error("Download error:", err);
+    }
+  }}
+  style={{
+    padding: "6px 10px",
+    background: "#eff6ff",
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+    maxWidth: "100%",
+    display: "flex",
+    alignItems: "flex-start",   // 🔥 multi-line üçün vacib
+    gap: 6,
+  }}
+>
+  <span>📎</span>
 
-                            } catch (err) {
-                              console.error("Download error:", err);
-                            }
-                          }}
-                          style={{
-                            padding: "6px 10px",
-                            background: "#eff6ff",
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            cursor: "pointer",
-                          }}
-                        >
-                          📎 {f.name}
-                        </button>
+  <span
+    style={{
+      maxWidth: 220,
+      whiteSpace: "normal",        // 🔥 artıq kəsmir
+      wordBreak: "break-word",     // 🔥 uzun sözləri bölür
+      overflowWrap: "anywhere",    // 🔥 extra safety
+      display: "block",
+      lineHeight: "1.3",
+    }}
+    title={f.name}
+  >
+    {f.name}
+  </span>
+</button>
                       ))}
                     </div>
                   }
@@ -2781,7 +2797,9 @@ function DrawerRow({ label, value }: { label: string; value: any }) {
   return (
     <div className="bg-gray-50 border rounded-xl p-3 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
       <div className="font-bold text-sm">{label}</div>
-      <div className="text-sm">{value ?? "-"}</div>
+      <div className="text-sm overflow-hidden">
+  {value ?? "-"}
+</div>
     </div>
   );
 }
