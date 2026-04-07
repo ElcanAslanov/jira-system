@@ -97,117 +97,117 @@ export async function PUT(
     if (taskErr) throw taskErr;
     if (!task) throw new Error("Task not found");
 
-   // ===== STATUS CHANGE icazəsi =====
-const isStatusUpdate = body.status !== undefined;
+    // ===== STATUS CHANGE icazəsi =====
+    const isStatusUpdate = body.status !== undefined;
 
-if (!isStatusUpdate) {
-  const canEdit =
-    ["ADMIN", "BOSS"].includes(user.role) ||
-    hasAnyPermission(user, ["tasks.edit.list", "tasks.edit.drawer"]);
+    if (!isStatusUpdate) {
+      const canEdit =
+        ["ADMIN", "BOSS"].includes(user.role) ||
+        hasAnyPermission(user, ["tasks.edit.list", "tasks.edit.drawer"]);
 
-  if (!canEdit) {
-    return NextResponse.json(
-      { error: "Permission denied (edit)" },
-      { status: 403 }
-    );
-  }
-}
+      if (!canEdit) {
+        return NextResponse.json(
+          { error: "Permission denied (edit)" },
+          { status: 403 }
+        );
+      }
+    }
 
     // DONE only ADMIN can change
     if (task.status === "DONE" && body.status === "TODO") {
-  const { data: assignees } = await supabaseAdmin
-    .from("task_assignees")
-    .select("employee_id")
-    .eq("task_id", taskId);
+      const { data: assignees } = await supabaseAdmin
+        .from("task_assignees")
+        .select("employee_id")
+        .eq("task_id", taskId);
 
-  const assignedIds = assignees?.map(a => a.employee_id) ?? [];
-  const isAssigned = assignedIds.includes(user.id);
-  const isCreator = task.created_by === user.id;
-  const isRehber = user.role === "REHBER";
+      const assignedIds = assignees?.map(a => a.employee_id) ?? [];
+      const isAssigned = assignedIds.includes(user.id);
+      const isCreator = task.created_by === user.id;
+      const isRehber = user.role === "REHBER";
 
-  const canReopen =
-    user.role === "ADMIN" ||
-    isRehber ||
-    (isCreator && !isAssigned);
+      const canReopen =
+        user.role === "ADMIN" ||
+        isRehber ||
+        (isCreator && !isAssigned);
 
-  if (!canReopen) {
-    return NextResponse.json(
-      { error: "Reopen icazəniz yoxdur" },
-      { status: 403 }
-    );
-  }
-}
+      if (!canReopen) {
+        return NextResponse.json(
+          { error: "Reopen icazəniz yoxdur" },
+          { status: 403 }
+        );
+      }
+    }
 
     /* ================= EMPLOYEE ================= */
     // EMPLOYEE: only if assigned
-   if (user.role === "EMPLOYEE") {
-  const { data: assigned, error: asgErr } = await supabaseAdmin
-    .from("task_assignees")
-    .select("id")
-    .eq("task_id", taskId)
-    .eq("employee_id", user.id)
-    .maybeSingle();
+    if (user.role === "EMPLOYEE") {
+      const { data: assigned, error: asgErr } = await supabaseAdmin
+        .from("task_assignees")
+        .select("id")
+        .eq("task_id", taskId)
+        .eq("employee_id", user.id)
+        .maybeSingle();
 
-  if (asgErr) throw asgErr;
-  if (!assigned) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
+      if (asgErr) throw asgErr;
+      if (!assigned) {
+        return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+      }
 
-  const newStatus = body.status ?? task.status;
+      const newStatus = body.status ?? task.status;
 
-  const { error: upErr } = await supabaseAdmin
-    .from("tasks")
-    .update({
-      status: newStatus,
-      sort_index:
-        body.sort_index !== undefined ? body.sort_index : task.sort_index,
-      updated_by: user.id,
-    })
-    .eq("id", taskId);
+      const { error: upErr } = await supabaseAdmin
+        .from("tasks")
+        .update({
+          status: newStatus,
+          sort_index:
+            body.sort_index !== undefined ? body.sort_index : task.sort_index,
+          updated_by: user.id,
+        })
+        .eq("id", taskId);
 
-  if (upErr) throw upErr;
+      if (upErr) throw upErr;
 
-  // ================= EMAIL BURDA OLMALIDIR =================
+      // ================= EMAIL BURDA OLMALIDIR =================
 
-  if (body.status) {
-    console.log("🔥 EMPLOYEE STATUS BLOCK WORKED");
+      if (body.status && body.status !== task.status) {
+        console.log("🔥 EMPLOYEE STATUS BLOCK WORKED");
 
-    const { data: creatorData } = await supabaseAdmin
-      .from("employees")
-      .select("email, ad, soyad")
-      .eq("id", task.created_by)
-      .single();
+        const { data: creatorData } = await supabaseAdmin
+          .from("employees")
+          .select("email, ad, soyad")
+          .eq("id", task.created_by)
+          .single();
 
-    console.log("CREATOR:", creatorData);
+        console.log("CREATOR:", creatorData);
 
-    if (creatorData?.email) {
-      const { data: currentUser } = await supabaseAdmin
-        .from("employees")
-        .select("ad, soyad")
-        .eq("id", user.id)
-        .single();
+        if (creatorData?.email) {
+          const { data: currentUser } = await supabaseAdmin
+            .from("employees")
+            .select("ad, soyad")
+            .eq("id", user.id)
+            .single();
 
-      const changerName = currentUser
-        ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
-        : "User";
+          const changerName = currentUser
+            ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+            : "User";
 
-      console.log("📨 SENDING EMAIL (EMPLOYEE)");
+          console.log("📨 SENDING EMAIL (EMPLOYEE)");
 
-      await sendNotificationEmail({
-        to: creatorData.email,
-        taskTitle: task.title,
-        assignedBy: changerName,
-        taskId: taskId,
-        type: "status_update",
-        status: body.status,
-      });
+          await sendNotificationEmail({
+            to: creatorData.email,
+            taskTitle: task.title,
+            assignedBy: changerName,
+            taskId: taskId,
+            type: "status_update",
+            status: body.status,
+          });
 
-      console.log("✅ EMAIL SENT (EMPLOYEE)");
+          console.log("✅ EMAIL SENT (EMPLOYEE)");
+        }
+      }
+
+      return NextResponse.json({ success: true });
     }
-  }
-
-  return NextResponse.json({ success: true });
-}
 
     /* ================= REHBER ================= */
     // REHBER: must have access to team task or own-created
@@ -249,68 +249,68 @@ if (!isStatusUpdate) {
     if (body.due_date !== undefined) updateFields.due_date = body.due_date;
     if (body.start_date !== undefined) updateFields.start_date = body.start_date;
 
-   if (Object.keys(updateFields).length > 0) {
+    if (Object.keys(updateFields).length > 0) {
 
-  updateFields.updated_by = user.id;
+      updateFields.updated_by = user.id;
 
-  const { error: upErr } = await supabaseAdmin
-    .from("tasks")
-    .update(updateFields)
-    .eq("id", taskId);
+      const { error: upErr } = await supabaseAdmin
+        .from("tasks")
+        .update(updateFields)
+        .eq("id", taskId);
 
-  if (upErr) throw upErr;
-}
+      if (upErr) throw upErr;
+    }
 
     /* ================= STATUS CHANGE NOTIF ================= */
-if (body.status) {
+    if (body.status && body.status !== task.status) {
 
-  console.log("🔥 STATUS BLOCK WORKED");
-  console.log("OLD STATUS:", task.status);
-  console.log("NEW STATUS:", body.status);
+      console.log("🔥 STATUS BLOCK WORKED");
+      console.log("OLD STATUS:", task.status);
+      console.log("NEW STATUS:", body.status);
 
-  const { data: assignees, error: asgErr } = await supabaseAdmin
-    .from("task_assignees")
-    .select("employee_id")
-    .eq("task_id", taskId);
+      const { data: assignees, error: asgErr } = await supabaseAdmin
+        .from("task_assignees")
+        .select("employee_id")
+        .eq("task_id", taskId);
 
-  if (asgErr) throw asgErr;
+      if (asgErr) throw asgErr;
 
-  // ===== EMAIL DEBUG =====
-  console.log("📧 TRYING TO SEND EMAIL");
+      // ===== EMAIL DEBUG =====
+      console.log("📧 TRYING TO SEND EMAIL");
 
-  const { data: creatorData } = await supabaseAdmin
-    .from("employees")
-    .select("email, ad, soyad")
-    .eq("id", task.created_by)
-    .single();
+      const { data: creatorData } = await supabaseAdmin
+        .from("employees")
+        .select("email, ad, soyad")
+        .eq("id", task.created_by)
+        .single();
 
-  console.log("👤 CREATOR DATA:", creatorData);
+      console.log("👤 CREATOR DATA:", creatorData);
 
-  if (creatorData?.email) {
-    const { data: currentUser } = await supabaseAdmin
-      .from("employees")
-      .select("ad, soyad")
-      .eq("id", user.id)
-      .single();
+      if (creatorData?.email) {
+        const { data: currentUser } = await supabaseAdmin
+          .from("employees")
+          .select("ad, soyad")
+          .eq("id", user.id)
+          .single();
 
-    const changerName = currentUser
-      ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
-      : "User";
+        const changerName = currentUser
+          ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+          : "User";
 
-    console.log("📨 SENDING EMAIL TO:", creatorData.email);
+        console.log("📨 SENDING EMAIL TO:", creatorData.email);
 
-    await sendNotificationEmail({
-      to: creatorData.email,
-      taskTitle: task.title,
-      assignedBy: changerName,
-      taskId: taskId,
-      type: "status_update",
-      status: body.status,
-    });
+        await sendNotificationEmail({
+          to: creatorData.email,
+          taskTitle: task.title,
+          assignedBy: changerName,
+          taskId: taskId,
+          type: "status_update",
+          status: body.status,
+        });
 
-    console.log("✅ EMAIL SENT (STATUS)");
-  }
-}
+        console.log("✅ EMAIL SENT (STATUS)");
+      }
+    }
 
     /* ================= ASSIGN CHANGE ================= */
     if (body.assigned_ids) {
@@ -343,6 +343,40 @@ if (body.status) {
           }))
         );
         if (insErr) throw insErr;
+      }
+
+      // 🔥 EMAIL LOGIC (assign üçün)
+      if (added.length > 0) {
+        console.log("📨 ASSIGN EMAIL TRIGGER:", added);
+
+        const { data: users } = await supabaseAdmin
+          .from("employees")
+          .select("id, email, ad, soyad")
+          .in("id", added);
+
+        const { data: currentUser } = await supabaseAdmin
+          .from("employees")
+          .select("ad, soyad")
+          .eq("id", user.id)
+          .single();
+
+        const assignedByName = currentUser
+          ? `${currentUser.ad ?? ""} ${currentUser.soyad ?? ""}`.trim()
+          : "User";
+
+        for (const u of users || []) {
+          if (!u.email) continue;
+
+          console.log("📧 sending to:", u.email);
+
+          await sendNotificationEmail({
+            to: u.email,
+            taskTitle: task.title,
+            assignedBy: assignedByName,
+            taskId: taskId,
+            type: "created", // 🔥 assign üçün bunu istifadə et
+          });
+        }
       }
 
       // notify only added

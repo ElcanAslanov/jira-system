@@ -69,7 +69,14 @@ export default function CreateTaskPage() {
     });
 
     const data = await res.json();
-    setEmployees(data.employees || []);
+    setEmployees(
+  [...(data.employees || [])].sort((a, b) =>
+    `${a.ad ?? ""} ${a.soyad ?? ""}`.localeCompare(
+      `${b.ad ?? ""} ${b.soyad ?? ""}`,
+      "az"
+    )
+  )
+);
   };
 
   const toggleAssign = (id: string) => {

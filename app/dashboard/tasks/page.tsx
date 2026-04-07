@@ -365,8 +365,15 @@ export default function TasksPage() {
   // const [users, setUsers] = useState<UserInfo[]>([]);
   const { data: employees, isLoading } = useEmployees();
 
-  const users: UserInfo[] = useMemo(() => {
-    return (employees || []).map((u: any) => ({
+const users: UserInfo[] = useMemo(() => {
+  return [...(employees || [])]
+    .sort((a: any, b: any) =>
+      `${a.ad ?? ""} ${a.soyad ?? ""}`.localeCompare(
+        `${b.ad ?? ""} ${b.soyad ?? ""}`,
+        "az"
+      )
+    )
+    .map((u: any) => ({
       id: u.id,
       name: `${u.ad ?? ""} ${u.soyad ?? ""}`.trim(),
       email: u.email ?? null,
@@ -374,7 +381,7 @@ export default function TasksPage() {
       company: u.companies?.name ?? null,
       department: u.departments?.name ?? null,
     }));
-  }, [employees]);
+}, [employees]);
 
   const STATUS_LABELS: Record<Status, string> = {
     TODO: t.todo,
@@ -413,7 +420,7 @@ export default function TasksPage() {
   // const router = useRouter();
   const { user, loading } = useAuth();
   useEffect(() => {
-   
+
   }, [loading, user]);
   const [permissions, setPermissions] = useState<string[]>([]);
 
@@ -586,24 +593,24 @@ export default function TasksPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
- useEffect(() => {
-  if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id) return;
 
-  async function loadPermissions() {
+    async function loadPermissions() {
 
       // 🔹 ROLE NAME FETCH
-          const { data: employee } = await supabase
-      .from("employees")
-      .select("role_id")
-      .eq("user_id", user.id)
-      .single();
+      const { data: employee } = await supabase
+        .from("employees")
+        .select("role_id")
+        .eq("user_id", user.id)
+        .single();
 
-       const roleId = employee?.role_id;
+      const roleId = employee?.role_id;
 
-    if (!roleId) {
-      console.warn("ROLE_ID TAPILMADI");
-      return;
-    }
+      if (!roleId) {
+        console.warn("ROLE_ID TAPILMADI");
+        return;
+      }
 
       // 🔹 ROLE PERMISSIONS
       const { data: rolePerms } = await supabase
@@ -660,28 +667,28 @@ export default function TasksPage() {
   }, []);
 
   const getToken = useCallback(async () => {
-  const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await supabase.auth.getSession();
 
-  if (error) {
-    console.error("SESSION ERROR:", error);
-    return null;
-  }
+    if (error) {
+      console.error("SESSION ERROR:", error);
+      return null;
+    }
 
-  const token = data?.session?.access_token;
+    const token = data?.session?.access_token;
 
-  if (!token) {
-    console.warn("NO TOKEN YET");
-  }
+    if (!token) {
+      console.warn("NO TOKEN YET");
+    }
 
-  return token;
-}, []);
+    return token;
+  }, []);
 
   const loadTasks = useCallback(async () => {
     const token = await getToken();
     if (!token) {
-    console.warn("LOAD TASKS SKIPPED - NO TOKEN");
-    return;
-  }
+      console.warn("LOAD TASKS SKIPPED - NO TOKEN");
+      return;
+    }
     const res = await fetch("/api/tasks", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -792,45 +799,45 @@ export default function TasksPage() {
   );
 
   const deleteTask = useCallback(
-  async (taskId: string) => {
-    const token = await getToken();
+    async (taskId: string) => {
+      const token = await getToken();
 
-    const res = await fetch(`/api/tasks`, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        "x-user-id": user?.id ?? "",
-        "x-user-role": (user as any)?.role ?? "",
-      },
-      body: JSON.stringify({ id: taskId }), // 🔥 ƏN VACİB
-    });
+      const res = await fetch(`/api/tasks`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "x-user-id": user?.id ?? "",
+          "x-user-role": (user as any)?.role ?? "",
+        },
+        body: JSON.stringify({ id: taskId }), // 🔥 ƏN VACİB
+      });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new Error(data?.error || "Delete failed");
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Delete failed");
+      }
+    },
+    [getToken, user?.id, user]
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user?.id) return;
+
+    async function safeLoad() {
+      const token = await getToken();
+
+      if (!token) return;
+
+      loadTasks();
     }
-  },
-  [getToken, user?.id, user]
-);
 
- useEffect(() => {
-  if (loading) return;
-  if (!user?.id) return;
-
-  async function safeLoad() {
-    const token = await getToken();
-
-    if (!token) return;
-
-    loadTasks();
-  }
-
-  if (!hasFetched.current) {
-    hasFetched.current = true;
-    safeLoad();
-  }
-}, [loading, user?.id, getToken, loadTasks]);
+    if (!hasFetched.current) {
+      hasFetched.current = true;
+      safeLoad();
+    }
+  }, [loading, user?.id, getToken, loadTasks]);
 
   useEffect(() => {
     if (openTaskId && rawTasks.length > 0) {
@@ -869,30 +876,30 @@ export default function TasksPage() {
       supabase.removeChannel(channel);
     };
   }, [user?.id, loadTasks]);
-/* ================= REALTIME TASK FILES ================= */
+  /* ================= REALTIME TASK FILES ================= */
 
-useEffect(() => {
-  if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id) return;
 
-  const channel = supabase
-    .channel("task-files-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "task_files",
-      },
-      () => {
-        loadTasks(); // 🔥 file gələndə UI refresh
-      }
-    )
-    .subscribe();
+    const channel = supabase
+      .channel("task-files-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "task_files",
+        },
+        () => {
+          loadTasks(); // 🔥 file gələndə UI refresh
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [user?.id, loadTasks]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadTasks]);
   useEffect(() => {
     if (!user?.id) return;
 
@@ -1095,7 +1102,7 @@ useEffect(() => {
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
 
- //   if (isMobile) return // 📱 mobil drag disable
+    //   if (isMobile) return // 📱 mobil drag disable
 
     const id = String(e.active.id);
 
@@ -1118,111 +1125,111 @@ useEffect(() => {
   const handleDragEnd = useCallback(
 
     async (event: DragEndEvent) => {
-  const { active, over } = event;
-  setActiveTaskId(null);
-  if (!over) return;
+      const { active, over } = event;
+      setActiveTaskId(null);
+      if (!over) return;
 
-  const activeId = String(active.id);
-  const overId = String(over.id);
+      const activeId = String(active.id);
+      const overId = String(over.id);
 
-  const activeFound = findTask(tasksBy, activeId);
-  if (!activeFound) return;
+      const activeFound = findTask(tasksBy, activeId);
+      if (!activeFound) return;
 
-  const overAsStatus = isStatus(overId) ? (overId as Status) : null;
-  const overFoundTask = overAsStatus ? null : findTask(tasksBy, overId);
+      const overAsStatus = isStatus(overId) ? (overId as Status) : null;
+      const overFoundTask = overAsStatus ? null : findTask(tasksBy, overId);
 
-  const sourceStatus = activeFound.status;
-  const sourceIndex = activeFound.index;
+      const sourceStatus = activeFound.status;
+      const sourceIndex = activeFound.index;
 
-  const targetStatus: Status = overAsStatus
-    ? overAsStatus
-    : (overFoundTask?.status ?? sourceStatus);
+      const targetStatus: Status = overAsStatus
+        ? overAsStatus
+        : (overFoundTask?.status ?? sourceStatus);
 
-  const task = activeFound.task;
-  const currentStatus = sourceStatus;
+      const task = activeFound.task;
+      const currentStatus = sourceStatus;
 
-  // 👤 RULE
-  const isOwner = task.created_by === user.id;
- const normalize = (s: string) => s?.toLowerCase().trim();
+      // 👤 RULE
+      const isOwner = task.created_by === user.id;
+      const normalize = (s: string) => s?.toLowerCase().trim();
 
-const fullName =
-  normalize(user.user_metadata?.full_name || "") ||
-  normalize(user.user_metadata?.name || "");
+      const fullName =
+        normalize(user.user_metadata?.full_name || "") ||
+        normalize(user.user_metadata?.name || "");
 
-const isAssignee =
-  task.assigned_to?.some((a: string) =>
-    normalize(a).includes(fullName) || fullName.includes(normalize(a))
-  );
+      const isAssignee =
+        task.assigned_to?.some((a: string) =>
+          normalize(a).includes(fullName) || fullName.includes(normalize(a))
+        );
 
-  let allowed = false;
+      let allowed = false;
 
-  if (isOwner) {
-    allowed = true;
-  } else if (isAssignee) {
-    if (currentStatus === "TODO" && targetStatus === "IN_PROGRESS") {
-      allowed = true;
+      if (isOwner) {
+        allowed = true;
+      } else if (isAssignee) {
+        if (currentStatus === "TODO" && targetStatus === "IN_PROGRESS") {
+          allowed = true;
+        }
+        if (currentStatus === "IN_PROGRESS" && targetStatus === "DONE") {
+          allowed = true;
+        }
+      }
+
+      // 🔒 EMPLOYEE CANCELLED ata bilməz
+      const role = (roleName || "").toUpperCase();
+      if (targetStatus === "CANCELLED" && role === "EMPLOYEE") {
+        return;
+      }
+
+      // ❌ icazə yoxdursa çıx
+      if (!allowed) return;
+
+      // ===== MOVE LOGIC =====
+      prevSnapshotRef.current = tasksBy;
+
+      const next: TasksByStatus = {
+        TODO: [...tasksBy.TODO],
+        IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+        DONE: [...tasksBy.DONE],
+        CANCELLED: [...tasksBy.CANCELLED],
+      };
+
+      // remove
+      const [moved] = next[sourceStatus].splice(sourceIndex, 1);
+      if (!moved) return;
+
+      let targetIndex = next[targetStatus].length;
+
+      if (overFoundTask && overFoundTask.status === targetStatus) {
+        targetIndex = overFoundTask.index;
+      }
+
+      // insert
+      const movedUpdated: Task = { ...moved, status: targetStatus };
+      next[targetStatus].splice(targetIndex, 0, movedUpdated);
+
+      // sort_index
+      const newSort = getNewSortIndex(next[targetStatus], targetIndex);
+      next[targetStatus][targetIndex] = {
+        ...next[targetStatus][targetIndex],
+        sort_index: newSort,
+      };
+
+      // optimistic UI
+      setTasksBy(next);
+      pushActivity(`• "${moved.title}" → ${targetStatus}`);
+
+      try {
+        await updateTask(activeId, {
+          status: targetStatus,
+          sort_index: Math.floor(newSort),
+        });
+      } catch (err: any) {
+        if (prevSnapshotRef.current) setTasksBy(prevSnapshotRef.current);
+        pushActivity(`• Update failed for "${moved.title}"`);
+      }
     }
-    if (currentStatus === "IN_PROGRESS" && targetStatus === "DONE") {
-      allowed = true;
-    }
-  }
 
-  // 🔒 EMPLOYEE CANCELLED ata bilməz
-  const role = (roleName || "").toUpperCase();
-  if (targetStatus === "CANCELLED" && role === "EMPLOYEE") {
-    return;
-  }
-
-  // ❌ icazə yoxdursa çıx
-  if (!allowed) return;
-
-  // ===== MOVE LOGIC =====
-  prevSnapshotRef.current = tasksBy;
-
-  const next: TasksByStatus = {
-    TODO: [...tasksBy.TODO],
-    IN_PROGRESS: [...tasksBy.IN_PROGRESS],
-    DONE: [...tasksBy.DONE],
-    CANCELLED: [...tasksBy.CANCELLED],
-  };
-
-  // remove
-  const [moved] = next[sourceStatus].splice(sourceIndex, 1);
-  if (!moved) return;
-
-  let targetIndex = next[targetStatus].length;
-
-  if (overFoundTask && overFoundTask.status === targetStatus) {
-    targetIndex = overFoundTask.index;
-  }
-
-  // insert
-  const movedUpdated: Task = { ...moved, status: targetStatus };
-  next[targetStatus].splice(targetIndex, 0, movedUpdated);
-
-  // sort_index
-  const newSort = getNewSortIndex(next[targetStatus], targetIndex);
-  next[targetStatus][targetIndex] = {
-    ...next[targetStatus][targetIndex],
-    sort_index: newSort,
-  };
-
-  // optimistic UI
-  setTasksBy(next);
-  pushActivity(`• "${moved.title}" → ${targetStatus}`);
-
-  try {
-    await updateTask(activeId, {
-      status: targetStatus,
-      sort_index: Math.floor(newSort),
-    });
-  } catch (err: any) {
-    if (prevSnapshotRef.current) setTasksBy(prevSnapshotRef.current);
-    pushActivity(`• Update failed for "${moved.title}"`);
-  }
-}
-
-    ,[tasksBy, updateTask, loadTasks, pushActivity]
+    , [tasksBy, updateTask, loadTasks, pushActivity]
   );
   if (loading) {
     return (
@@ -1879,60 +1886,75 @@ const isAssignee =
           users={users}
           currentUserId={user.id}   // 🔥 bunu əlavə et
           onClose={() => setSelectedTask(null)}
-          onSave={async (updates) => {
-            const taskId = selectedTask.id;
+         onSave={async (updates) => {
+  const taskId = selectedTask.id;
 
-            // optimistic patch in state
-            const snapshot = tasksBy;
-            const f = findTask(tasksBy, taskId);
+  // 🔥 BACKEND FIX üçün mapping
+  const fixedUpdates = {
+    ...updates,
+    assigned_ids: updates.assigned_to, // 🔥 ƏN VACİB FIX
+  };
 
-            if (f) {
-              const next: TasksByStatus = {
-                TODO: [...tasksBy.TODO],
-                IN_PROGRESS: [...tasksBy.IN_PROGRESS],
-                DONE: [...tasksBy.DONE],
-                CANCELLED: [...tasksBy.CANCELLED],
-              };
+  // optimistic patch in state
+  const snapshot = tasksBy;
+  const f = findTask(tasksBy, taskId);
 
-              const old = next[f.status][f.index];
-              const patched: Task = { ...old, ...(updates as any) };
+  if (f) {
+    const next: TasksByStatus = {
+      TODO: [...tasksBy.TODO],
+      IN_PROGRESS: [...tasksBy.IN_PROGRESS],
+      DONE: [...tasksBy.DONE],
+      CANCELLED: [...tasksBy.CANCELLED],
+    };
 
-              // if status changed inside drawer, move to new column end
-              const nextStatus: Status = isStatus(patched.status) ? (patched.status as Status) : f.status;
+    const old = next[f.status][f.index];
+    const patched: Task = { ...old, ...(updates as any) };
 
-              // remove old
-              next[f.status].splice(f.index, 1);
+    const nextStatus: Status = isStatus(patched.status)
+      ? (patched.status as Status)
+      : f.status;
 
-              // insert into target end
-              const targetIndex = next[nextStatus].length;
-              next[nextStatus].push(patched);
+    // remove old
+    next[f.status].splice(f.index, 1);
 
-              // ensure sort_index reasonable
-              const newSort = getNewSortIndex(next[nextStatus], targetIndex);
-              next[nextStatus][targetIndex] = { ...next[nextStatus][targetIndex], sort_index: newSort };
+    // insert into new column
+    const targetIndex = next[nextStatus].length;
+    next[nextStatus].push(patched);
 
-              setTasksBy(next);
+    const newSort = getNewSortIndex(next[nextStatus], targetIndex);
 
-              try {
-                await updateTask(taskId, { ...updates, sort_index: newSort });
-                pushActivity(`• Edited "${patched.title}"`);
-                setSelectedTask(null);
-                loadTasks();
-              } catch {
-                setTasksBy(snapshot);
-                pushActivity(`• Edit failed "${patched.title}"`);
-              }
-            } else {
-              // fallback
-              try {
-                await updateTask(taskId, updates);
-                setSelectedTask(null);
-                loadTasks();
-              } catch {
-                // ignore
-              }
-            }
-          }}
+    next[nextStatus][targetIndex] = {
+      ...next[nextStatus][targetIndex],
+      sort_index: newSort,
+    };
+
+    setTasksBy(next);
+
+    try {
+      await updateTask(taskId, {
+        ...fixedUpdates,   // 🔥 BURDA istifadə olunur
+        sort_index: newSort,
+      });
+
+      pushActivity(`• Edited "${patched.title}"`);
+      setSelectedTask(null);
+      loadTasks();
+
+    } catch {
+      setTasksBy(snapshot);
+      pushActivity(`• Edit failed "${patched.title}"`);
+    }
+
+  } else {
+    try {
+      await updateTask(taskId, fixedUpdates); // 🔥 BURDA da fix
+      setSelectedTask(null);
+      loadTasks();
+    } catch {
+      // ignore
+    }
+  }
+}}
         />
       ) : null}
 
@@ -2247,7 +2269,7 @@ const isAssignee =
 
               <DrawerRow
                 label={t.createdBy}
-               value={viewTask.creator_name ?? "-"}
+                value={viewTask.creator_name ?? "-"}
               />
 
               <DrawerRow
@@ -2271,58 +2293,58 @@ const isAssignee =
                 <DrawerRow
                   label={t.files}
                   value={
-                   <div className="flex gap-2 flex-wrap break-all">
+                    <div className="flex gap-2 flex-wrap break-all">
                       {viewTask.files.map((f, i) => (
-                     <button
-  key={i}
-  onClick={async (e) => {
-    e.stopPropagation();
-    if (!f?.path) return;
+                        <button
+                          key={i}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!f?.path) return;
 
-    try {
-      const { data, error } = await supabase.storage
-        .from("task-files")
-        .createSignedUrl(f.path, 60);
+                            try {
+                              const { data, error } = await supabase.storage
+                                .from("task-files")
+                                .createSignedUrl(f.path, 60);
 
-      if (error || !data?.signedUrl) {
-        console.error("Signed URL error:", error);
-        return;
-      }
+                              if (error || !data?.signedUrl) {
+                                console.error("Signed URL error:", error);
+                                return;
+                              }
 
-      window.location.href = data.signedUrl;
-    } catch (err) {
-      console.error("Download error:", err);
-    }
-  }}
-  style={{
-    padding: "6px 10px",
-    background: "#eff6ff",
-    borderRadius: 8,
-    fontSize: 12,
-    fontWeight: 800,
-    cursor: "pointer",
-    maxWidth: "100%",
-    display: "flex",
-    alignItems: "flex-start",   // 🔥 multi-line üçün vacib
-    gap: 6,
-  }}
->
-  <span>📎</span>
+                              window.location.href = data.signedUrl;
+                            } catch (err) {
+                              console.error("Download error:", err);
+                            }
+                          }}
+                          style={{
+                            padding: "6px 10px",
+                            background: "#eff6ff",
+                            borderRadius: 8,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            maxWidth: "100%",
+                            display: "flex",
+                            alignItems: "flex-start",   // 🔥 multi-line üçün vacib
+                            gap: 6,
+                          }}
+                        >
+                          <span>📎</span>
 
-  <span
-    style={{
-      maxWidth: 220,
-      whiteSpace: "normal",        // 🔥 artıq kəsmir
-      wordBreak: "break-word",     // 🔥 uzun sözləri bölür
-      overflowWrap: "anywhere",    // 🔥 extra safety
-      display: "block",
-      lineHeight: "1.3",
-    }}
-    title={f.name}
-  >
-    {f.name}
-  </span>
-</button>
+                          <span
+                            style={{
+                              maxWidth: 220,
+                              whiteSpace: "normal",        // 🔥 artıq kəsmir
+                              wordBreak: "break-word",     // 🔥 uzun sözləri bölür
+                              overflowWrap: "anywhere",    // 🔥 extra safety
+                              display: "block",
+                              lineHeight: "1.3",
+                            }}
+                            title={f.name}
+                          >
+                            {f.name}
+                          </span>
+                        </button>
                       ))}
                     </div>
                   }
@@ -2667,8 +2689,8 @@ const isAssignee =
               setCreateOpen(false);
               loadTasks();
               setTimeout(() => {
-  loadTasks();
-}, 1500);
+                loadTasks();
+              }, 1500);
             } catch {
               setTasksBy(snapshot);
               pushActivity(`• Create failed "${tempTask.title}"`);
@@ -2798,8 +2820,8 @@ function DrawerRow({ label, value }: { label: string; value: any }) {
     <div className="bg-gray-50 border rounded-xl p-3 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
       <div className="font-bold text-sm">{label}</div>
       <div className="text-sm overflow-hidden">
-  {value ?? "-"}
-</div>
+        {value ?? "-"}
+      </div>
     </div>
   );
 }
@@ -2974,18 +2996,18 @@ const TaskCard = React.memo(function TaskCard({
     }
   }
 
-const bgColor =
-  task.status === "DONE"
-    ? "bg-green-50 border-green-200"
-    : task.status === "CANCELLED"
-      ? "bg-red-50 border-red-200"
-      : dueStatus === "overdue"
-        ? "bg-red-50 border-red-300"
-        : dueStatus === "soon"
-          ? "bg-yellow-50 border-yellow-300"
-          : task.status === "TODO"
-            ? "bg-white border-slate-200"
-            : "bg-blue-50 border-blue-200";
+  const bgColor =
+    task.status === "DONE"
+      ? "bg-green-50 border-green-200"
+      : task.status === "CANCELLED"
+        ? "bg-red-50 border-red-200"
+        : dueStatus === "overdue"
+          ? "bg-red-50 border-red-300"
+          : dueStatus === "soon"
+            ? "bg-yellow-50 border-yellow-300"
+            : task.status === "TODO"
+              ? "bg-white border-slate-200"
+              : "bg-blue-50 border-blue-200";
 
   const {
     attributes,
@@ -3188,7 +3210,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
     priority: task.priority,
     start_date: task.start_date ?? null,
     due_date: task.due_date ?? null,
-    assigned_to: task.assigned_to ?? [],
+    assigned_to: (task as any).assigned_ids ?? []
   });
 
 
@@ -3207,7 +3229,7 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
       priority: task.priority,
       start_date: task.start_date ?? null,
       due_date: task.due_date ?? null,
-      assigned_to: task.assigned_to ?? [],
+      assigned_to: (task as any).assigned_ids ?? [],
     });
   }, [task]);
 
@@ -3262,29 +3284,29 @@ function EditDrawer({ task, users, currentUserId, onClose, onSave }: EditDrawerP
           {/* STATUS */}
           <div>
             <label className="text-sm font-medium text-gray-700">Status</label>
-      <select
-  className="w-full border rounded-lg px-3 py-2 mt-1"
-  value={form.status as string}
-  onChange={(e) =>
-    setForm((p) => ({ ...p, status: e.target.value as any }))
-  }
->
-  {STATUSES.map((s) => (
-    <option key={s} value={s}>
-      {
-        s === "TODO"
-          ? t.todo
-          : s === "IN_PROGRESS"
-          ? t.inProgress
-          : s === "DONE"
-          ? t.taskDone
-          : s === "CANCELLED"
-          ? t.cancelled
-          : s
-      }
-    </option>
-  ))}
-</select>
+            <select
+              className="w-full border rounded-lg px-3 py-2 mt-1"
+              value={form.status as string}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, status: e.target.value as any }))
+              }
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {
+                    s === "TODO"
+                      ? t.todo
+                      : s === "IN_PROGRESS"
+                        ? t.inProgress
+                        : s === "DONE"
+                          ? t.taskDone
+                          : s === "CANCELLED"
+                            ? t.cancelled
+                            : s
+                  }
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* GRID SECTION */}

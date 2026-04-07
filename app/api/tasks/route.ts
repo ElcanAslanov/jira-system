@@ -221,6 +221,7 @@ export async function GET(req: Request) {
         .from("task_assignees")
         .select(`
           task_id,
+          employee_id,
           employees (
             ad,
             soyad
@@ -288,15 +289,21 @@ export async function GET(req: Request) {
     ? `${creator.ad ?? ""} ${creator.soyad ?? ""}`.trim()
     : null;
 
-  return {
-    ...task,
-    creator_name: creatorName,
-    updated_by_name: updatedByName,
-    comment_count: commentCount,
-    assigned_to: names,
-    files: relatedFiles,
-    deleter, // 🔥 ƏN VACİB
-  };
+return {
+  ...task,
+  creator_name: creatorName,
+  updated_by_name: updatedByName,
+  comment_count: commentCount,
+
+  // 🔥 UI üçün (adlar)
+  assigned_to: names,
+
+  // 🔥 BACKEND üçün (UUID-lər)
+  assigned_ids: relatedAssignees.map((r) => r.employee_id),
+
+  files: relatedFiles,
+  deleter,
+};
 });
 
     return NextResponse.json({ tasks: finalTasks });
