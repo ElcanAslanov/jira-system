@@ -272,6 +272,48 @@ if (creatorData?.email && task?.created_by !== employeeId) {
 
   console.log("✅ COMMENT EMAIL SENT");
 }
+
+// ✅ Əgər comment yazan taskı yaradandırsa,
+// taska təyin olunan bütün şəxslərə email getsin
+if (task?.created_by === employeeId) {
+  const assigneeIds =
+    assignees
+      ?.map((a) => a.employee_id)
+      .filter(Boolean)
+      .filter((id) => id !== employeeId) ?? [];
+
+  if (assigneeIds.length > 0) {
+    const { data: assigneeEmployees, error: assigneeEmailError } =
+      await supabaseAdmin
+        .from("employees")
+        .select("id, email")
+        .in("id", assigneeIds);
+
+    if (assigneeEmailError) {
+      console.error("ASSIGNEE EMAIL LOAD ERROR:", assigneeEmailError);
+    }
+
+    const emails =
+      assigneeEmployees
+        ?.map((e) => e.email)
+        .filter(Boolean) ?? [];
+
+    console.log("📨 CREATOR COMMENT EMAILS TO:", emails);
+
+    for (const email of emails) {
+      await sendNotificationEmail({
+        to: email,
+        taskTitle: task?.title ?? "Task",
+        assignedBy: commenterName,
+        taskId: taskId,
+        type: "comment",
+      });
+    }
+
+    console.log("✅ CREATOR COMMENT EMAILS SENT");
+  }
+}
+
     /* ================= RESPONSE ================= */
 
     const { data: emp } = await supabaseAdmin

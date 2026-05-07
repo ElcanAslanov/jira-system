@@ -105,26 +105,26 @@ export async function sendNotificationEmail({
 }
 
     // ================= COMMENT =================
-    if (type === "comment") {
-      subject = `Yeni rəy: ${taskTitle}`;
-      html = `
-        <div style="font-family:Arial;padding:20px;">
-          <h2>💬 Yeni rəy yazıldı</h2>
+   if (type === "comment") {
+  subject = `Yeni comment: ${taskTitle}`;
+  html = `
+    <div style="font-family:Arial;padding:20px;">
+      <h2>💬 Yeni comment yazıldı</h2>
 
-          <p><b>${assignedBy}</b> task-a rəy yazdı</p>
-          <p><b>Task:</b> ${taskTitle}</p>
+      <p><b>${assignedBy}</b> tərəfindən yeni comment yazıldı</p>
+      <p><b>Task:</b> ${taskTitle}</p>
 
-          <a href="${taskLink}" 
-            style="display:inline-block;margin-top:10px;padding:10px 16px;background:#f59e0b;color:white;border-radius:8px;text-decoration:none;">
-            Rəylərə bax →
-          </a>
+      <a href="${taskLink}" 
+        style="display:inline-block;margin-top:10px;padding:10px 16px;background:#f59e0b;color:white;border-radius:8px;text-decoration:none;">
+        Commentlərə bax →
+      </a>
 
-          <p style="margin-top:20px;font-size:12px;color:#999;">
-            Bu email avtomatik göndərilib
-          </p>
-        </div>
-      `;
-    }
+      <p style="margin-top:20px;font-size:12px;color:#999;">
+        Bu email avtomatik göndərilib
+      </p>
+    </div>
+  `;
+}
 
     const info = await transporter.sendMail({
       from: `"Task Flow" <${process.env.SMTP_EMAIL}>`,
