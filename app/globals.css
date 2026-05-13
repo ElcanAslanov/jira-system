@@ -16,12 +16,12 @@ html,
 body {
   margin: 0;
   padding: 0;
-  height: 100%;
+  min-height: 100%;
   overflow-x: hidden;
+  background: #111827;
 }
 
 body {
-  background-color: #f8fafc;
   color: #0f172a;
 }
 
@@ -80,12 +80,168 @@ body {
 }
 .ProseMirror {
   outline: none;
-  font-size: 15px;
+  font-size: 14px;
   min-height: 120px;
+  line-height: 1.7;
+  color: #0f172a;
+  font-weight: 500;
+}
+
+.ProseMirror p {
+  margin: 0.35rem 0;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
   content: "💬 Şərh yaz...";
-  color: #9ca3af;
+  color: #94a3b8;
   pointer-events: none;
+  font-weight: 600;
+}
+
+.ProseMirror strong {
+  font-weight: 800;
+}
+
+.ProseMirror em {
+  color: #475569;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #94a3b8;
+  pointer-events: none;
+  font-weight: 600;
+}
+
+
+.input-modern {
+  height: 44px;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.18s ease;
+}
+
+textarea.input-modern {
+  height: auto;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.input-modern:focus {
+  border-color: #e42526;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(228, 37, 38, 0.1);
+}
+
+.prose p {
+  margin: 0.35rem 0;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.25rem;
+  margin: 0.35rem 0;
+}
+
+.prose strong {
+  font-weight: 800;
+}
+
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 7px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* =========================
+   TASKS PRINT
+========================= */
+
+.task-print-area {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .task-print-area,
+  .task-print-area * {
+    visibility: visible !important;
+  }
+
+  .task-print-area {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    color: #111827 !important;
+    padding: 18mm !important;
+  }
+
+  .task-print-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+  }
+
+  .task-print-area th,
+  .task-print-area td {
+    border: 1px solid #d1d5db !important;
+    padding: 7px 8px !important;
+    vertical-align: top !important;
+    text-align: left !important;
+  }
+
+  .task-print-area th {
+    background: #f3f4f6 !important;
+    font-weight: 800 !important;
+  }
+
+  .task-print-title {
+    font-size: 20px !important;
+    font-weight: 900 !important;
+    margin-bottom: 4px !important;
+  }
+
+  .task-print-subtitle {
+    font-size: 12px !important;
+    color: #6b7280 !important;
+    margin-bottom: 16px !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
 }

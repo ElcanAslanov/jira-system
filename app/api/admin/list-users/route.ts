@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
@@ -6,46 +6,95 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    // 1️⃣ Auth users
-    const { data, error } =
-      await supabaseAdmin.auth.admin.listUsers();
+    const { searchParams } = new URL(req.url);
+
+    const page = Math.max(Number(searchParams.get("page") || 1), 1);
+    const pageSizeRaw = Number(searchParams.get("pageSize") || 10);
+    const pageSize = Math.min(Math.max(pageSizeRaw, 5), 100);
+
+    const search = (searchParams.get("search") || "").trim().toLowerCase();
+
+    /*
+      Supabase auth.admin.listUsers pagination:
+      page starts from 1.
+      perPage controls how many auth users are returned.
+    */
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage: pageSize,
+    });
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    const authUsers = data.users || [];
+    const userIds = authUsers.map((user) => user.id);
+
+    let employeeMap = new Map<
+      string,
+      {
+        user_id: string;
+        ad: string | null;
+        soyad: string | null;
+      }
+    >();
+
+    if (userIds.length > 0) {
+      const { data: employees, error: empError } = await supabaseAdmin
+        .from("employees")
+        .select("user_id, ad, soyad")
+        .in("user_id", userIds);
+
+      if (empError) {
+        return NextResponse.json({ error: empError.message }, { status: 400 });
+      }
+
+      employeeMap = new Map(
+        (employees || []).map((employee) => [employee.user_id, employee])
       );
     }
 
-    const authUsers = data.users;
-
-    // 2️⃣ Employees cədvəli (ad, soyad)
-    const { data: employees } = await supabaseAdmin
-      .from("employees")
-      .select("user_id, ad, soyad");
-
-    // 3️⃣ Merge
-    const merged = authUsers.map((user) => {
-      const employee = employees?.find(
-        (e) => e.user_id === user.id
-      );
+    let users = authUsers.map((user) => {
+      const employee = employeeMap.get(user.id);
 
       return {
         id: user.id,
-        email: user.email,
+        email: user.email || "-",
         ad: employee?.ad || "-",
         soyad: employee?.soyad || "-",
+        created_at: user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
       };
     });
 
-    return NextResponse.json({ users: merged });
+    /*
+      Qeyd:
+      Auth users üzərində server-side global search Supabase Auth API ilə tam ideal deyil.
+      Bu search cari səhifənin nəticələrində işləyir.
+      Əgər global search lazımdırsa, users-i employees/profiles cədvəlindən idarə etmək daha düzgündür.
+    */
+    if (search) {
+      users = users.filter((user) => {
+        const full = `${user.ad} ${user.soyad} ${user.email}`.toLowerCase();
+        return full.includes(search);
+      });
+    }
 
+    const hasMore = authUsers.length === pageSize;
+
+    return NextResponse.json({
+      users,
+      page,
+      pageSize,
+      count: users.length,
+      hasMore,
+    });
   } catch (err) {
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    );
+    console.error("List users error:", err);
+
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

@@ -55,9 +55,9 @@ export async function sendNotificationEmail({
 
     // ================= STATUS UPDATE =================
     if (type === "status_update") {
-  subject = `Task status dəyişdi: ${taskTitle}`;
+      subject = `Task status dəyişdi: ${taskTitle}`;
 
-  html = `
+      html = `
     <div style="font-family:Arial, sans-serif; background:#f9fafb; padding:24px;">
       <div style="max-width:520px; margin:0 auto; background:#ffffff; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
 
@@ -102,12 +102,12 @@ export async function sendNotificationEmail({
       </div>
     </div>
   `;
-}
+    }
 
     // ================= COMMENT =================
-   if (type === "comment") {
-  subject = `Yeni comment: ${taskTitle}`;
-  html = `
+    if (type === "comment") {
+      subject = `Yeni comment: ${taskTitle}`;
+      html = `
     <div style="font-family:Arial;padding:20px;">
       <h2>💬 Yeni comment yazıldı</h2>
 
@@ -124,7 +124,7 @@ export async function sendNotificationEmail({
       </p>
     </div>
   `;
-}
+    }
 
     const info = await transporter.sendMail({
       from: `"Task Flow" <${process.env.SMTP_EMAIL}>`,

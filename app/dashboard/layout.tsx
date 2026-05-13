@@ -2,9 +2,10 @@
 
 import Sidebar from "../components/Sidebar";
 import NotificationBell from "../components/NotificationBell";
-import {useAuth} from "@/context/AuthProvider"
+import { useAuth } from "@/context/AuthProvider";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Menu } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -13,19 +14,17 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // 🔥 auth check flag (loop-un qarşısını alır)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [checkedAuth, setCheckedAuth] = useState(false);
 
-  // loading bitəndə işə düşür
   useEffect(() => {
     if (!loading) {
       setCheckedAuth(true);
     }
   }, [loading]);
 
-  // 🔥 redirect logic (loop FIX)
   useEffect(() => {
     if (!checkedAuth) return;
 
@@ -34,7 +33,6 @@ export default function DashboardLayout({
     }
   }, [checkedAuth, user, router]);
 
-  // 🔥 optional refresh listener (səndə var idi)
   useEffect(() => {
     const handleFocusRefresh = () => {
       router.refresh();
@@ -47,67 +45,96 @@ export default function DashboardLayout({
     };
   }, [router]);
 
-  // 🔥 LOADING UI
+  /*
+    Burada artıq mərkəzdə "Yüklənir..." göstərmirik.
+    Çünki səhifələrin öz loading/skeleton hissəsi var.
+    Belə olanda refresh zamanı ikiqat loading görünmür.
+  */
   if (!checkedAuth) {
-    return <div className="p-10">Yüklənir...</div>;
-  }
+  return (
+    <div className="min-h-screen bg-[#111827]">
+      <div className="min-h-screen bg-[#f7f8fb] lg:pl-[264px]" />
+    </div>
+  );
+}
 
-  // 🔥 redirect gedəndə boş qalmasın
   if (!user) {
-    return <div className="p-10">Redirect olunur...</div>;
+    return <div className="min-h-screen bg-[#f7f8fb]" />;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-
+    <div className="min-h-screen overflow-hidden bg-[#111827]">
       {/* DESKTOP SIDEBAR */}
-      <div className="hidden lg:block fixed top-0 left-0 h-screen w-64 z-40">
-        <Sidebar onClose={sidebarOpen ? () => setSidebarOpen(false) : undefined} />
+      <div
+        className={[
+          "fixed left-0 top-0 z-50 hidden h-screen transition-[width] duration-300 ease-out lg:block",
+          sidebarCollapsed ? "w-[78px]" : "w-[264px]",
+        ].join(" ")}
+      >
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+        />
       </div>
 
-      {/* MOBILE SIDEBAR */}
-     <div
-  className={`fixed inset-0 z-50 lg:hidden transition ${
-    sidebarOpen ? "pointer-events-auto" : "pointer-events-none"
-  }`}
->
-  <div
-    className={`absolute inset-0 bg-black/40 transition-opacity ${
-      sidebarOpen ? "opacity-100" : "opacity-0"
-    }`}
-    onClick={() => setSidebarOpen(false)}
-  />
+      {/* MOBILE OVERLAY SIDEBAR */}
+      <div
+        className={[
+          "fixed inset-0 z-[80] lg:hidden transition",
+          mobileSidebarOpen ? "pointer-events-auto" : "pointer-events-none",
+        ].join(" ")}
+      >
+        <div
+          className={[
+            "absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] transition-opacity duration-300",
+            mobileSidebarOpen ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
 
-  <div
-    className={`absolute top-0 left-0 h-screen w-72 bg-slate-900 shadow-xl transform transition-transform ${
-      sidebarOpen ? "translate-x-0" : "-translate-x-full"
-    }`}
-  >
-    <Sidebar onClose={() => setSidebarOpen(false)} />
-  </div>
-</div>
+        <div
+          className={[
+            "absolute left-0 top-0 h-full w-[84vw] max-w-[310px] transition-transform duration-300 ease-out",
+            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full",
+          ].join(" ")}
+        >
+          <Sidebar
+            mobile
+            collapsed={false}
+            onClose={() => setMobileSidebarOpen(false)}
+            onCollapsedChange={() => {}}
+          />
+        </div>
+      </div>
+
+      {/* MOBILE HAMBURGER */}
+      <button
+        onClick={() => setMobileSidebarOpen(true)}
+        className={[
+          "fixed left-4 top-4 z-[60] grid h-11 w-11 place-items-center rounded-2xl",
+          "border border-slate-200 bg-white text-slate-800 shadow-sm",
+          "transition hover:bg-slate-50 active:scale-95 lg:hidden",
+        ].join(" ")}
+        aria-label="Menyu aç"
+      >
+        <Menu size={21} />
+      </button>
+
+      {/* NOTIFICATION */}
+      <div className="fixed right-4 top-4 z-[60] sm:right-6">
+        <NotificationBell />
+      </div>
 
       {/* MAIN CONTENT */}
-      <div className="flex flex-col min-h-screen lg:ml-64">
-
-        {/* MOBILE MENU BUTTON */}
-        <button
-          className="lg:hidden fixed top-4 left-4 z-40 text-2xl"
-          onClick={() => setSidebarOpen(true)}
-        >
-          ☰
-        </button>
-
-        {/* NOTIFICATION */}
-        <div className="fixed top-4 right-6 z-40">
-          <NotificationBell />
-        </div>
-
-        {/* PAGE CONTENT */}
-        <main className="flex-1 p-6">
+      <div
+        className={[
+          "min-h-screen bg-[#f7f8fb] transition-[padding] duration-300 ease-out",
+          sidebarCollapsed ? "lg:pl-[78px]" : "lg:pl-[264px]",
+        ].join(" ")}
+      >
+        <main className="min-h-screen px-4 pb-8 pt-20 sm:px-5 lg:px-7 lg:pt-0">
           {children}
         </main>
-
       </div>
     </div>
   );
