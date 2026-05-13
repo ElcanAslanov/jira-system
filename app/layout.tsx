@@ -1,9 +1,14 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
 import Providers from "./providers";
-import ClientProvider from "@/app/components/ClientProvider"; // 🔥 əlavə olundu
+import ClientProvider from "@/app/components/ClientProvider";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  preload: true,
+  variable: "--font-inter",
+});
 
 export const metadata = {
   title: "Cahan Flow",
@@ -12,16 +17,14 @@ export const metadata = {
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="az" className={inter.variable}>
+      <body>
         <Providers>
-          <ClientProvider> {/* 🔥 ƏN VACİB HİSSƏ */}
-            {children}
-          </ClientProvider>
+          <ClientProvider>{children}</ClientProvider>
         </Providers>
       </body>
     </html>
